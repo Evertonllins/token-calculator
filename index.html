@@ -263,6 +263,7 @@
       <input type="text" id="sessionNameInput" class="sub session-name-input" placeholder="Name this session — e.g. \"Support triage agent\"" autocomplete="off">
     </div>
     <div class="toolbar">
+      <label class="switch" title="Enter prompt sizes as token counts instead of pasting text. Removes all prompt text from the saved model and its export."><input type="checkbox" id="tokensOnlyToggle"> Token counts only</label>
       <label class="switch"><input type="checkbox" id="cachingToggle" checked> Prompt caching</label>
       <label class="field-row">Req / day <input type="number" id="trafficInput" min="0" value="1000"></label>
       <button class="btn" id="openGuide">Guide</button>
@@ -298,7 +299,7 @@
       <h2 style="font-size:15px;">Volume projection</h2>
       <p class="panel-sub" id="volumeSub"></p>
       <div class="proj-grid" id="projGrid"></div>
-      <div class="footnote">Token counts use a rough heuristic (~1 token per 4 characters). Prices cover Anthropic, OpenAI, Google, and DeepSeek as of 2026-07 — edit them under "Model prices" as providers update their rates. Treat results as an order-of-magnitude estimate, not a bill. Open the <strong>Guide</strong> (top bar) for the full calculation model and worked examples.</div>
+      <div class="footnote">Pasted text is sized with a rough heuristic (~1 token per 4 characters); switch on <strong>Token counts only</strong> to enter exact counts and keep prompts out of the file. Prices cover Anthropic, OpenAI, Google, and DeepSeek as of 2026-07 — edit them under "Model prices" as providers update their rates. Treat results as an order-of-magnitude estimate, not a bill. Open the <strong>Guide</strong> (top bar) for the full calculation model and worked examples.</div>
     </section>
   </div>
 </div>
@@ -325,12 +326,12 @@
 
       <h3>What this is</h3>
       <p>Token Ledger estimates the <strong>token consumption and dollar cost</strong> of an LLM-based solution before you build it. You describe the architecture — which agents exist, what each one carries in its context, how they call each other — and it computes a per-request cost breakdown plus a daily/monthly projection under best, typical, and worst-case assumptions.</p>
-      <p>It is a <em>sizing</em> tool. Token counts use a rough heuristic (~1 token per 4 characters) and the runtime behavior of a real system is assumption-driven, so treat every number as an order-of-magnitude estimate for budgeting and architecture comparison — not a bill.</p>
+      <p>It is a <em>sizing</em> tool. Prompt sizes come either from text you paste (measured with a rough ~1-token-per-4-characters heuristic) or from token counts you type in directly, and the runtime behavior of a real system is assumption-driven — so treat every number as an order-of-magnitude estimate for budgeting and architecture comparison, not a bill.</p>
 
       <h3>Quick start</h3>
       <ol>
         <li><strong>Name the session</strong> (under the title) after your project — it becomes the export filename.</li>
-        <li><strong>Describe your first agent</strong>: pick provider &amp; model, paste (or sketch) its system prompt, add its tools with rough schema text, and a representative user input.</li>
+        <li><strong>Describe your first agent</strong>: pick provider &amp; model, paste (or sketch) its system prompt, add its tools with rough schema text, and a representative user input. <em>Prefer not to paste prompts? Flip on “Token counts only” and type sizes instead — see below.</em></li>
         <li><strong>Set the per-turn sizes</strong>: average output tokens and average tool-result tokens per turn.</li>
         <li><strong>Set loop iterations</strong> (best / typical / worst): how many model calls one invocation of this agent makes before it's done.</li>
         <li><strong>Add subagents</strong> and wire them in the <em>Calls</em> section of whichever agent invokes them, with how many times per invocation.</li>
@@ -349,6 +350,12 @@
 entry points = 1 per request · 0 calls ⇒ 0 invocations ⇒ $0</div>
       <h4>Scenarios</h4>
       <p>Every iteration and call count has best / typical / worst values. Use them as sensitivity analysis: <em>best</em> = happy path (few turns, little fan-out), <em>worst</em> = retries, deep loops, maximum delegation. The spread between the three projections tells you how much your cost depends on runtime behavior you don't fully control.</p>
+
+      <h3>Sharing without leaking prompts</h3>
+      <p>Prompt text is <strong>never part of the calculation</strong> — it is only a convenience for deriving a token count (chars ÷ 4). The math consumes token counts and nothing else. So you can skip the text entirely with no effect on any number.</p>
+      <p>Turn on <strong>Token counts only</strong> in the top bar and every prompt field becomes a plain number input: system prompt size, each tool's schema size, and average user-input size. Switching it on also <strong>strips any prompt text already stored</strong>, so the saved model — and the JSON you export — carries sizes but no business logic. Estimates are identical before and after the switch.</p>
+      <p>Use it when you want to circulate a sizing model for review, attach it to a ticket, or hand it to procurement without shipping your system prompts along with it. The Export dialog tells you which mode the file is in before you copy it.</p>
+      <p class="note">To get accurate counts without pasting text anywhere, run your real prompts through your provider's token-counting endpoint and type the results in.</p>
 
       <h3>The calculation, exactly</h3>
       <p>For each agent, in a given scenario, with <code>n</code> = loop iterations and <code>inv</code> = computed invocations per request:</p>
@@ -405,7 +412,7 @@ cacheRead  = static − cacheWrite</div>
         <li><strong>Compare architectures, don't just price one.</strong> Duplicate via Export → edit → Import, or flip one agent's model/provider and watch the totals move.</li>
         <li><strong>Toggle caching off</strong> for a hard upper bound — useful when you can't guarantee cache hit rates (bursty traffic, prefixes that change per user).</li>
         <li><strong>History is often the sleeper cost.</strong> A 5k-token tool result carried through 6 more turns costs more than the system prompt. If worst-case history dominates, that's an argument for context editing or summarization in the real system.</li>
-        <li><strong>Token counts are chars÷4.</strong> Real tokenizers differ by ±20–30%, more for code and non-English text. For precision, run representative text through your provider's token-counting API and overwrite the numbers.</li>
+        <li><strong>Pasted text is sized at chars÷4.</strong> Real tokenizers differ by ±20–30%, more for code and non-English text. For precision, run representative text through your provider's token-counting API, then switch on <strong>Token counts only</strong> and enter the exact figures.</li>
         <li><strong>Prices go stale.</strong> Defaults were sourced July 2026 — verify against provider pricing pages before betting a budget on them; everything is editable under Model prices.</li>
         <li><strong>Not modeled:</strong> thinking/reasoning token surcharges, batch-API discounts, long-context price tiers, per-image token costs, and rate-limit-driven retries. Pad worst case accordingly if these apply to you.</li>
       </ul>
@@ -423,6 +430,7 @@ cacheRead  = static − cacheWrite</div>
   <div class="modal">
     <h2>Export architecture</h2>
     <p class="panel-sub" style="margin-top:-6px;">Saves as <code id="exportFilename" style="font-family:var(--mono); color:var(--accent-ink);"></code>. Select all &amp; copy, or try the download button — some environments block automatic downloads, so copy is the guaranteed path.</p>
+    <p id="exportPrivacy" style="font-size:12.5px; font-weight:700; margin:0 0 10px;"></p>
     <textarea id="exportText" readonly style="width:100%; min-height:260px; font-family:var(--mono); font-size:11.5px; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); color:var(--ink); resize:vertical;"></textarea>
     <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end; flex-wrap:wrap;">
       <span id="exportStatus" style="align-self:center; font-size:12px; color:var(--good); font-weight:700;"></span>
@@ -482,8 +490,10 @@ cacheRead  = static − cacheWrite</div>
       provider: "anthropic",
       model: "opus48",
       systemPrompt: "",
+      systemPromptTokens: 0,
       tools: [],
       userInput: "",
+      userInputTokens: 0,
       outputTokens: 400,
       toolResultTokens: 0,
       iterations: { best: 1, typical: 1, worst: 1 },
@@ -505,6 +515,7 @@ cacheRead  = static − cacheWrite</div>
       sessionName: "",
       traffic: 1000,
       cachingEnabled: true,
+      inputMode: "text",
       prices: JSON.parse(JSON.stringify(DEFAULT_PRICES)),
       agents: [defaultAgent({ name: "Orchestrator" })],
       edges: []
@@ -551,11 +562,19 @@ cacheRead  = static − cacheWrite</div>
         parsed.prices[key].provider = (DEFAULT_PRICES[key] && DEFAULT_PRICES[key].provider) || "anthropic";
       }
     });
+    if (parsed.inputMode === undefined) parsed.inputMode = "text";
     parsed.agents.forEach(function (a) {
       if (!a.provider) {
         a.provider = (parsed.prices[a.model] && parsed.prices[a.model].provider) || "anthropic";
       }
       if (a.toolResultTokens === undefined) a.toolResultTokens = 0;
+      // Token counts are the source of truth for the math; prompt text is only
+      // an optional helper used to derive them. Older files stored text only.
+      if (a.systemPromptTokens === undefined) a.systemPromptTokens = estimateTokens(a.systemPrompt);
+      if (a.userInputTokens === undefined) a.userInputTokens = estimateTokens(a.userInput);
+      (a.tools || []).forEach(function (t) {
+        if (t.tokens === undefined) t.tokens = estimateTokens(t.text);
+      });
     });
     if (!parsed.edges) {
       parsed.edges = [];
@@ -592,15 +611,18 @@ cacheRead  = static − cacheWrite</div>
     return Math.ceil(t.length / 4);
   }
 
+  // The calculation consumes token COUNTS only — never prompt text. Text, when
+  // present, is just a convenience for deriving those counts (chars ÷ 4). This
+  // is what lets "token counts only" mode work without touching the math.
   function agentStaticTokens(agent) {
-    var sys = estimateTokens(agent.systemPrompt);
-    var tools = agent.tools.reduce(function (sum, t) { return sum + estimateTokens(t.text); }, 0);
+    var sys = Math.max(0, Number(agent.systemPromptTokens) || 0);
+    var tools = agent.tools.reduce(function (sum, t) { return sum + Math.max(0, Number(t.tokens) || 0); }, 0);
     return sys + tools;
   }
 
   function staticHintText(agent) {
     var staticT = agentStaticTokens(agent);
-    var text = estimateTokens(agent.userInput) + " tokens · static " + staticT + " tokens";
+    var text = Math.max(0, Number(agent.userInputTokens) || 0) + " tokens · static " + staticT + " tokens";
     if (state.cachingEnabled && agent.cacheEligible && staticT > 0 && staticT < 1024) {
       text += " — below most providers' minimum cacheable prefix (~1–4k); may not cache in practice";
     }
@@ -667,7 +689,7 @@ cacheRead  = static − cacheWrite</div>
       var price = getPrice(agent.model);
       var iterations = Math.max(1, (agent.iterations && agent.iterations[scenario]) || 1);
       var staticTokens = agentStaticTokens(agent);
-      var userInputTokens = estimateTokens(agent.userInput);
+      var userInputTokens = Math.max(0, Number(agent.userInputTokens) || 0);
       var outputPerTurn = Math.max(0, Number(agent.outputTokens) || 0);
       var toolResultPerTurn = Math.max(0, Number(agent.toolResultTokens) || 0);
 
@@ -783,10 +805,14 @@ cacheRead  = static − cacheWrite</div>
       card.className = "agent-card" + (isRoot ? " root" : "");
       card.dataset.id = agent.id;
 
+      var tokensOnly = state.inputMode === "tokens";
+
       var toolsHtml = agent.tools.map(function (t, i) {
         return '<div class="tool-row" data-tool-index="' + i + '">' +
           '<input type="text" class="tool-name" placeholder="tool name" value="' + escapeHtml(t.name) + '">' +
-          '<input type="text" class="tool-text" placeholder="schema / description (for token size)" value="' + escapeHtml(t.text) + '">' +
+          (tokensOnly
+            ? '<input type="number" min="0" class="tool-tokens" style="flex:0 0 96px;" placeholder="tokens" value="' + (Number(t.tokens) || 0) + '" title="Schema tokens">'
+            : '<input type="text" class="tool-text" placeholder="schema / description (for token size)" value="' + escapeHtml(t.text) + '">') +
           '<button class="icon-btn remove-tool" title="Remove tool">×</button>' +
           "</div>";
       }).join("");
@@ -819,15 +845,23 @@ cacheRead  = static − cacheWrite</div>
         '<div><label class="mini">Provider</label><select class="provider-select">' + providerOptions(agent.provider) + '</select></div>' +
         '<div><label class="mini">Model</label><select class="model-select">' + modelOptions(agent.model, agent.provider) + '</select></div>' +
         '</div>' +
-        '<label class="mini">System prompt</label>' +
-        '<textarea class="system-prompt" placeholder="Paste or sketch the system prompt...">' + escapeHtml(agent.systemPrompt) + '</textarea>' +
-        '<div class="token-hint">' + estimateTokens(agent.systemPrompt) + ' tokens</div>' +
+        (tokensOnly
+          ? '<label class="mini">System prompt size (tokens)</label>' +
+            '<input type="number" min="0" class="system-prompt-tokens" value="' + (Number(agent.systemPromptTokens) || 0) + '">' +
+            '<div class="token-hint">no prompt text stored</div>'
+          : '<label class="mini">System prompt</label>' +
+            '<textarea class="system-prompt" placeholder="Paste or sketch the system prompt...">' + escapeHtml(agent.systemPrompt) + '</textarea>' +
+            '<div class="token-hint">' + (Number(agent.systemPromptTokens) || 0) + ' tokens</div>') +
         '<label class="mini">Tools</label>' +
         '<div class="tools-list">' + toolsHtml + '</div>' +
         '<button class="btn small add-tool">+ Add tool</button>' +
-        '<label class="mini">Avg user input (per call)</label>' +
-        '<textarea class="user-input" placeholder="Representative user message...">' + escapeHtml(agent.userInput) + '</textarea>' +
-        '<div class="token-hint">' + staticHintText(agent) + '</div>' +
+        (tokensOnly
+          ? '<label class="mini">Avg user input size (tokens, per call)</label>' +
+            '<input type="number" min="0" class="user-input-tokens" value="' + (Number(agent.userInputTokens) || 0) + '">' +
+            '<div class="token-hint">' + staticHintText(agent) + '</div>'
+          : '<label class="mini">Avg user input (per call)</label>' +
+            '<textarea class="user-input" placeholder="Representative user message...">' + escapeHtml(agent.userInput) + '</textarea>' +
+            '<div class="token-hint">' + staticHintText(agent) + '</div>') +
         '<div class="two-col">' +
         '<div><label class="mini">Avg output tokens (per turn)</label>' +
         '<input type="number" class="output-tokens" min="0" value="' + agent.outputTokens + '"></div>' +
@@ -917,6 +951,7 @@ cacheRead  = static − cacheWrite</div>
   function syncTopBar() {
     document.getElementById("trafficInput").value = state.traffic;
     document.getElementById("cachingToggle").checked = state.cachingEnabled;
+    document.getElementById("tokensOnlyToggle").checked = state.inputMode === "tokens";
     document.getElementById("sessionNameInput").value = state.sessionName || "";
   }
 
@@ -932,6 +967,26 @@ cacheRead  = static − cacheWrite</div>
 
   document.getElementById("cachingToggle").addEventListener("change", function (e) {
     state.cachingEnabled = e.target.checked;
+    renderAll();
+  });
+
+  // Switching to "token counts only" strips the stored prompt text — that's the
+  // point of the mode, so the saved model and its export carry sizes but no
+  // business logic. Token counts are already the source of truth for the math,
+  // so the estimate is byte-identical before and after the switch.
+  document.getElementById("tokensOnlyToggle").addEventListener("change", function (e) {
+    state.inputMode = e.target.checked ? "tokens" : "text";
+    if (state.inputMode === "tokens") {
+      var stripped = 0;
+      state.agents.forEach(function (a) {
+        if (a.systemPrompt) { a.systemPrompt = ""; stripped++; }
+        if (a.userInput) { a.userInput = ""; stripped++; }
+        a.tools.forEach(function (t) { if (t.text) { t.text = ""; stripped++; } });
+      });
+      notify(stripped
+        ? "Token counts kept; prompt text removed from " + stripped + " field" + (stripped === 1 ? "" : "s") + ". Estimates are unchanged."
+        : "Token counts only — prompt text is never stored.");
+    }
     renderAll();
   });
 
@@ -995,6 +1050,14 @@ cacheRead  = static − cacheWrite</div>
     var textarea = document.getElementById("exportText");
     textarea.value = exportJSON();
     document.getElementById("exportFilename").textContent = slugify(state.sessionName) + ".json";
+    var privacy = document.getElementById("exportPrivacy");
+    if (state.inputMode === "tokens") {
+      privacy.style.color = "var(--good)";
+      privacy.textContent = "Token counts only — this file contains no prompt text.";
+    } else {
+      privacy.style.color = "var(--warn)";
+      privacy.textContent = "Heads up: this file includes your prompt text. Switch on “Token counts only” before sharing if it contains business logic.";
+    }
     document.getElementById("exportStatus").textContent = "";
     document.getElementById("exportBackdrop").classList.add("open");
     textarea.focus();
@@ -1099,18 +1162,23 @@ cacheRead  = static − cacheWrite</div>
     if (!agent) return;
 
     if (t.classList.contains("name-input")) agent.name = t.value; // "Called by"/target labels refresh on blur (see change handler) — no re-render here, or the input loses focus mid-keystroke
-    else if (t.classList.contains("system-prompt")) { agent.systemPrompt = t.value; updateHint(card, agent); }
-    else if (t.classList.contains("user-input")) { agent.userInput = t.value; updateHint(card, agent); }
+    else if (t.classList.contains("system-prompt")) { agent.systemPrompt = t.value; agent.systemPromptTokens = estimateTokens(t.value); updateHint(card, agent); }
+    else if (t.classList.contains("user-input")) { agent.userInput = t.value; agent.userInputTokens = estimateTokens(t.value); updateHint(card, agent); }
+    else if (t.classList.contains("system-prompt-tokens")) { agent.systemPromptTokens = Math.max(0, Number(t.value) || 0); updateHint(card, agent); }
+    else if (t.classList.contains("user-input-tokens")) { agent.userInputTokens = Math.max(0, Number(t.value) || 0); updateHint(card, agent); }
     else if (t.classList.contains("output-tokens")) agent.outputTokens = Number(t.value) || 0;
     else if (t.classList.contains("tool-result-tokens")) agent.toolResultTokens = Math.max(0, Number(t.value) || 0);
     else if (t.classList.contains("iter-best")) agent.iterations.best = Math.max(1, Number(t.value) || 1);
     else if (t.classList.contains("iter-typical")) agent.iterations.typical = Math.max(1, Number(t.value) || 1);
     else if (t.classList.contains("iter-worst")) agent.iterations.worst = Math.max(1, Number(t.value) || 1);
-    else if (t.classList.contains("tool-name") || t.classList.contains("tool-text")) {
+    else if (t.classList.contains("tool-name") || t.classList.contains("tool-text") || t.classList.contains("tool-tokens")) {
       var row = t.closest(".tool-row");
       var idx = Number(row.dataset.toolIndex);
-      if (t.classList.contains("tool-name")) agent.tools[idx].name = t.value;
-      else { agent.tools[idx].text = t.value; updateHint(card, agent); } // tool schemas count toward the static prefix
+      var tool = agent.tools[idx];
+      if (t.classList.contains("tool-name")) tool.name = t.value;
+      // Tool schemas count toward the static prefix, so the hint must refresh.
+      else if (t.classList.contains("tool-tokens")) { tool.tokens = Math.max(0, Number(t.value) || 0); updateHint(card, agent); }
+      else { tool.text = t.value; tool.tokens = estimateTokens(t.value); updateHint(card, agent); }
     } else { return; }
 
     renderBreakdown();
@@ -1121,7 +1189,11 @@ cacheRead  = static − cacheWrite</div>
 
   function updateHint(card, agent) {
     var hints = card.querySelectorAll(".token-hint");
-    if (hints[0]) hints[0].textContent = estimateTokens(agent.systemPrompt) + " tokens";
+    if (hints[0]) {
+      hints[0].textContent = state.inputMode === "tokens"
+        ? "no prompt text stored"
+        : (Number(agent.systemPromptTokens) || 0) + " tokens";
+    }
     if (hints[1]) hints[1].textContent = staticHintText(agent);
   }
 
@@ -1165,7 +1237,7 @@ cacheRead  = static − cacheWrite</div>
     }
     if (e.target.classList.contains("add-tool")) {
       var agent1 = state.agents.find(function (a) { return a.id === card.dataset.id; });
-      agent1.tools.push({ name: "tool", text: "" });
+      agent1.tools.push({ name: "tool", text: "", tokens: 0 });
       renderAgents();
       renderBreakdown();
       renderProjection();
