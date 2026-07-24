@@ -1,0 +1,1314 @@
+<title>Token Ledger — LLM Architecture Cost Estimator</title>
+<style>
+  :root {
+    --ink: #1B222B;
+    --ink-soft: #4B5560;
+    --paper: #EDF1F0;
+    --panel: #FFFFFF;
+    --panel-2: #F5F8F7;
+    --line: #C7D0CE;
+    --line-soft: #DCE3E1;
+    --accent: #B5651D;
+    --accent-ink: #7A4213;
+    --accent-soft: #F0DFC9;
+    --good: #2F7A52;
+    --warn: #9C7A0A;
+    --bad: #B4423A;
+    --shadow: 0 1px 2px rgba(20, 30, 28, 0.06), 0 4px 14px rgba(20, 30, 28, 0.05);
+    --radius: 10px;
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #E7ECEA;
+      --ink-soft: #A7B3AF;
+      --paper: #12181B;
+      --panel: #1B2226;
+      --panel-2: #202A2E;
+      --line: #2E3A3E;
+      --line-soft: #263034;
+      --accent: #E2984F;
+      --accent-ink: #F6C98A;
+      --accent-soft: #3A2C1B;
+      --good: #55B482;
+      --warn: #D7AC49;
+      --bad: #E1786A;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #E7ECEA; --ink-soft: #A7B3AF; --paper: #12181B; --panel: #1B2226; --panel-2: #202A2E;
+    --line: #2E3A3E; --line-soft: #263034; --accent: #E2984F; --accent-ink: #F6C98A; --accent-soft: #3A2C1B; --good: #55B482; --warn: #D7AC49; --bad: #E1786A;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+  :root[data-theme="light"] {
+    --ink: #1B222B; --ink-soft: #4B5560; --paper: #EDF1F0; --panel: #FFFFFF; --panel-2: #F5F8F7;
+    --line: #C7D0CE; --line-soft: #DCE3E1; --accent: #B5651D; --accent-ink: #7A4213; --accent-soft: #F0DFC9; --good: #2F7A52; --warn: #9C7A0A; --bad: #B4423A;
+    --shadow: 0 1px 2px rgba(20, 30, 28, 0.06), 0 4px 14px rgba(20, 30, 28, 0.05);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  ::selection { background: var(--accent-soft); }
+
+  .app { max-width: 1360px; margin: 0 auto; padding: 24px 28px 64px; }
+
+  header.top {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+    padding-bottom: 18px; margin-bottom: 20px; border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  header.top h1 {
+    font-family: var(--serif); font-weight: 700; font-size: 26px; margin: 0;
+    letter-spacing: 0.2px; text-wrap: balance;
+  }
+  header.top .sub { color: var(--ink-soft); font-size: 13px; margin-top: 4px; }
+  .session-name-input {
+    border: 1px solid transparent; background: transparent; font-family: var(--sans);
+    padding: 3px 6px; margin: 1px 0 0 -7px; border-radius: 6px; width: 320px; max-width: 60vw;
+  }
+  .session-name-input:hover { border-color: var(--line-soft); }
+  .session-name-input:focus { outline: none; border-color: var(--accent); background: var(--panel); color: var(--ink); }
+  .session-name-input::placeholder { color: var(--ink-soft); font-style: italic; }
+  header.top .title-block { display: flex; flex-direction: column; }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 13px; cursor: pointer; transition: border-color .12s, background .12s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.06); }
+  .btn.ghost { background: transparent; }
+  .btn.small { padding: 5px 9px; font-size: 12px; }
+  .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+
+  .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+  .switch input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+  .field-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+  .field-row input[type="number"] {
+    width: 92px; font-family: var(--mono); font-variant-numeric: tabular-nums;
+    font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--panel); color: var(--ink);
+  }
+
+  .grid { display: grid; grid-template-columns: minmax(340px, 420px) 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 18px 18px 20px;
+  }
+  .panel h2 {
+    font-family: var(--serif); font-size: 17px; margin: 0 0 4px; font-weight: 700;
+  }
+  .panel .panel-sub { color: var(--ink-soft); font-size: 12.5px; margin: 0 0 14px; }
+
+  .agent-list { display: flex; flex-direction: column; gap: 12px; }
+  .agent-card {
+    border: 1px solid var(--line-soft); border-radius: 9px; padding: 12px 14px;
+    background: var(--panel-2); position: relative;
+  }
+  .agent-card.root { border-left: 3px solid var(--accent); }
+  .agent-card .row-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .agent-card input[type="text"], .agent-card select, .agent-card textarea, .agent-card input[type="number"] {
+    font-family: var(--sans); font-size: 13px; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+    width: 100%;
+  }
+  .agent-card textarea { font-family: var(--sans); resize: vertical; min-height: 44px; }
+  .agent-card input[type="number"] { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .agent-card .name-input { font-weight: 700; font-size: 14px; flex: 1; }
+  .agent-card label.mini {
+    display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--ink-soft); margin: 8px 0 3px; font-weight: 700;
+  }
+  .agent-card .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .agent-card .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .called-by-hint { font-size: 11.5px; color: var(--ink-soft); margin-bottom: 8px; font-style: italic; }
+  .call-grid { display: grid; grid-template-columns: 1.4fr 0.6fr 0.6fr 0.6fr auto; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .call-grid select, .call-grid input { width: 100%; }
+  .call-grid input[type="number"] { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: center; padding: 6px 4px; }
+  .call-row-head span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 700; text-align: center; }
+  .call-row-head span:first-child { text-align: left; }
+  .token-hint { font-family: var(--mono); font-size: 11px; color: var(--accent-ink); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .tool-row { display: flex; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .tool-row input { flex: 1; }
+  .icon-btn {
+    background: transparent; border: none; color: var(--ink-soft); cursor: pointer; font-size: 15px;
+    padding: 2px 6px; border-radius: 5px; line-height: 1;
+  }
+  .icon-btn:hover { color: var(--bad); background: var(--line-soft); }
+  .remove-agent { position: absolute; top: 10px; right: 10px; }
+  .checkbox-row { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+  .checkbox-row input { accent-color: var(--accent); }
+
+  .scenario-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .scenario-tabs button {
+    flex: 1; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--ink-soft); font-weight: 700; font-size: 12.5px; cursor: pointer;
+  }
+  .scenario-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  table.breakdown { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.breakdown th {
+    text-align: right; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ink-soft); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--line);
+  }
+  table.breakdown th:first-child, table.breakdown td:first-child { text-align: left; }
+  table.breakdown td { padding: 7px 8px; border-bottom: 1px solid var(--line-soft); font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  table.breakdown td:first-child { font-family: var(--sans); font-weight: 600; }
+  table.breakdown tr.total td { border-top: 2px solid var(--line); border-bottom: none; font-weight: 700; padding-top: 9px; }
+  .table-scroll { overflow-x: auto; }
+
+  .proj-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+  @media (max-width: 640px) { .proj-grid { grid-template-columns: 1fr; } }
+  .proj-card {
+    border: 1px solid var(--line-soft); border-radius: 9px; padding: 12px 14px; background: var(--panel-2);
+  }
+  .proj-card .label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); font-weight: 700; }
+  .proj-card .value { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .proj-card .sub { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .proj-card.typical { border-color: var(--accent); }
+  .proj-card.typical .value { color: var(--accent-ink); }
+
+  .section-divider { height: 1px; background: var(--line); margin: 20px 0; }
+
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(10, 14, 13, 0.45); display: none;
+    align-items: flex-start; justify-content: center; padding: 60px 20px; z-index: 50;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--panel); border-radius: var(--radius); border: 1px solid var(--line);
+    box-shadow: var(--shadow); max-width: 640px; width: 100%; padding: 20px 22px; max-height: 80vh; overflow-y: auto;
+  }
+  .modal h2 { font-family: var(--serif); margin-top: 0; }
+  .price-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .price-row input { width: 100%; font-family: var(--mono); font-variant-numeric: tabular-nums; padding: 6px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); color: var(--ink); }
+  .price-row input[type="text"] { font-family: var(--sans); }
+  .price-head { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr auto; gap: 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 700; margin-bottom: 8px; }
+  .price-provider-heading {
+    font-family: var(--serif); font-size: 13px; font-weight: 700; color: var(--accent-ink);
+    margin: 14px 0 6px; padding-top: 8px; border-top: 1px solid var(--line-soft);
+  }
+  .price-provider-heading:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+
+  .empty-note { color: var(--ink-soft); font-size: 13px; padding: 10px 2px; }
+
+  .modal.docs { max-width: 860px; }
+  .docs-body { font-size: 13.5px; line-height: 1.6; max-width: 68ch; }
+  .docs-body h3 {
+    font-family: var(--serif); font-size: 16px; font-weight: 700; margin: 26px 0 8px;
+    padding-top: 14px; border-top: 1px solid var(--line-soft);
+  }
+  .docs-body h3:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  .docs-body h4 { font-size: 13px; font-weight: 700; margin: 16px 0 6px; color: var(--accent-ink); }
+  .docs-body p { margin: 0 0 10px; }
+  .docs-body ul, .docs-body ol { margin: 0 0 10px; padding-left: 22px; }
+  .docs-body li { margin-bottom: 5px; }
+  .docs-body code {
+    font-family: var(--mono); font-size: 12px; background: var(--panel-2);
+    border: 1px solid var(--line-soft); border-radius: 4px; padding: 1px 5px;
+  }
+  .docs-body .formula {
+    font-family: var(--mono); font-size: 12px; background: var(--panel-2);
+    border: 1px solid var(--line-soft); border-left: 3px solid var(--accent);
+    border-radius: 6px; padding: 10px 14px; margin: 10px 0; overflow-x: auto; white-space: pre;
+  }
+  .docs-body table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 10px 0 14px; }
+  .docs-body table th {
+    text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ink-soft); font-weight: 700; padding: 5px 8px; border-bottom: 1px solid var(--line);
+  }
+  .docs-body table td { padding: 6px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  .docs-body table td:not(:first-child) { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .docs-body .example {
+    border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel-2);
+    padding: 12px 16px; margin: 12px 0;
+  }
+  .docs-body .example h4 { margin-top: 0; }
+  .docs-body .note { font-size: 12px; color: var(--ink-soft); font-style: italic; }
+  #toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(8px);
+    background: var(--ink); color: var(--paper); font-size: 13px; font-weight: 600;
+    padding: 10px 18px; border-radius: 8px; box-shadow: var(--shadow);
+    opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; z-index: 100;
+    max-width: 90vw; text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.error { background: var(--bad); color: #fff; }
+  .add-agent-btn { width: 100%; margin-top: 4px; }
+  a { color: var(--accent-ink); }
+  .footnote { color: var(--ink-soft); font-size: 11.5px; margin-top: 18px; }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="title-block">
+      <h1>Token Ledger</h1>
+      <input type="text" id="sessionNameInput" class="sub session-name-input" placeholder="Name this session — e.g. \"Support triage agent\"" autocomplete="off">
+    </div>
+    <div class="toolbar">
+      <label class="switch"><input type="checkbox" id="cachingToggle" checked> Prompt caching</label>
+      <label class="field-row">Req / day <input type="number" id="trafficInput" min="0" value="1000"></label>
+      <button class="btn" id="openGuide">Guide</button>
+      <button class="btn" id="openPrices">Model prices</button>
+      <button class="btn" id="exportBtn">Export</button>
+      <button class="btn" id="importBtn">Import</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none">
+      <button class="btn ghost" id="resetBtn">Reset</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Architecture</h2>
+      <p class="panel-sub">Model each agent in the call graph: static prompt cost, loop iterations, per-turn output and tool-result sizes, and which other agents it calls.</p>
+      <div class="agent-list" id="agentList"></div>
+      <button class="btn primary add-agent-btn" id="addAgentBtn">+ Add agent</button>
+    </section>
+
+    <section class="panel">
+      <h2>Estimate</h2>
+      <p class="panel-sub">Per-request breakdown by agent, then projected across your traffic volume.</p>
+      <div class="scenario-tabs" id="scenarioTabs">
+        <button data-s="best">Best case</button>
+        <button data-s="typical" class="active">Typical</button>
+        <button data-s="worst">Worst case</button>
+      </div>
+      <div class="table-scroll">
+        <table class="breakdown" id="breakdownTable"></table>
+      </div>
+
+      <div class="section-divider"></div>
+      <h2 style="font-size:15px;">Volume projection</h2>
+      <p class="panel-sub" id="volumeSub"></p>
+      <div class="proj-grid" id="projGrid"></div>
+      <div class="footnote">Token counts use a rough heuristic (~1 token per 4 characters). Prices cover Anthropic, OpenAI, Google, and DeepSeek as of 2026-07 — edit them under "Model prices" as providers update their rates. Treat results as an order-of-magnitude estimate, not a bill. Open the <strong>Guide</strong> (top bar) for the full calculation model and worked examples.</div>
+    </section>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="priceBackdrop">
+  <div class="modal">
+    <h2>Model prices ($ / million tokens)</h2>
+    <div class="price-head"><span>Model</span><span>Input</span><span>Output</span><span>Cache write</span><span>Cache read</span><span></span></div>
+    <div id="priceRows"></div>
+    <div style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+      <select id="addPriceProvider" style="font-size:12px; padding:5px 7px; border:1px solid var(--line); border-radius:6px; background:var(--panel-2); color:var(--ink);"></select>
+      <button class="btn small" id="addPriceRow">+ Add model</button>
+    </div>
+    <div style="margin-top:16px; text-align:right;">
+      <button class="btn primary" id="closePrices">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="guideBackdrop">
+  <div class="modal docs">
+    <h2>Token Ledger — Guide</h2>
+    <div class="docs-body">
+
+      <h3>What this is</h3>
+      <p>Token Ledger estimates the <strong>token consumption and dollar cost</strong> of an LLM-based solution before you build it. You describe the architecture — which agents exist, what each one carries in its context, how they call each other — and it computes a per-request cost breakdown plus a daily/monthly projection under best, typical, and worst-case assumptions.</p>
+      <p>It is a <em>sizing</em> tool. Token counts use a rough heuristic (~1 token per 4 characters) and the runtime behavior of a real system is assumption-driven, so treat every number as an order-of-magnitude estimate for budgeting and architecture comparison — not a bill.</p>
+
+      <h3>Quick start</h3>
+      <ol>
+        <li><strong>Name the session</strong> (under the title) after your project — it becomes the export filename.</li>
+        <li><strong>Describe your first agent</strong>: pick provider &amp; model, paste (or sketch) its system prompt, add its tools with rough schema text, and a representative user input.</li>
+        <li><strong>Set the per-turn sizes</strong>: average output tokens and average tool-result tokens per turn.</li>
+        <li><strong>Set loop iterations</strong> (best / typical / worst): how many model calls one invocation of this agent makes before it's done.</li>
+        <li><strong>Add subagents</strong> and wire them in the <em>Calls</em> section of whichever agent invokes them, with how many times per invocation.</li>
+        <li><strong>Set traffic</strong> (requests/day) and read the Estimate panel. Flip scenarios and the caching toggle to see the range.</li>
+        <li><strong>Export</strong> to save/share the model as JSON; <strong>Import</strong> restores it anywhere.</li>
+      </ol>
+
+      <h3>Core concepts</h3>
+      <h4>Agent</h4>
+      <p>One LLM "role" in your system with its own model, system prompt, and tools. An agent with <em>no incoming calls</em> is an <strong>entry point</strong> (orange left border) and runs once per request. Everything else runs only as often as its callers invoke it.</p>
+      <h4>Loop iterations — depth</h4>
+      <p>How many turns a single invocation of the agent takes with <em>itself</em>: tool-call round-trips, self-verification passes, any back-and-forth before it finishes. Each turn re-sends the static prefix and the growing history, and produces one output.</p>
+      <h4>Calls — width</h4>
+      <p>Listed on the <em>calling</em> agent: which other agents it invokes and how many times per invocation. Each call spawns a <strong>fresh instance</strong> of the target — new context, no shared history with siblings. One specialist may be called by several different agents; its total invocations are the sum across all callers, multiplied up the chain:</p>
+      <div class="formula">invocations(agent) = Σ over incoming calls: invocations(caller) × calls-per-invocation
+entry points = 1 per request · 0 calls ⇒ 0 invocations ⇒ $0</div>
+      <h4>Scenarios</h4>
+      <p>Every iteration and call count has best / typical / worst values. Use them as sensitivity analysis: <em>best</em> = happy path (few turns, little fan-out), <em>worst</em> = retries, deep loops, maximum delegation. The spread between the three projections tells you how much your cost depends on runtime behavior you don't fully control.</p>
+
+      <h3>The calculation, exactly</h3>
+      <p>For each agent, in a given scenario, with <code>n</code> = loop iterations and <code>inv</code> = computed invocations per request:</p>
+      <p>Turn <code>k</code> of a loop sends: <strong>static prefix</strong> (system prompt + tool schemas) + <strong>user input</strong> (re-sent every turn) + <strong>history</strong> (all outputs and tool results of turns before <code>k</code>) — and produces one output. Tool results are input-only: turn <code>k</code>'s result first appears in turn <code>k+1</code>'s context. Summed over a whole request:</p>
+      <div class="formula">turns    = inv × n
+static   = staticTokens × turns
+user     = userTokens × n × inv
+history  = (outputTokens + toolResultTokens) × n(n−1)/2 × inv
+output   = outputTokens × turns
+
+cost = user+history at input rate
+     + static at cache rates (below) — or input rate if caching is off
+     + output at output rate</div>
+      <h4>Caching model</h4>
+      <p>With caching on (and the agent marked cache-eligible), the static prefix is written to cache <strong>once per request</strong> — sibling invocations of the same agent reuse the warm entry — and every remaining turn reads it at the provider's discounted rate:</p>
+      <div class="formula">cacheWrite = staticTokens × min(inv, 1)
+cacheRead  = static − cacheWrite</div>
+      <p>User input and history are billed at the full input rate — conservative, since some providers incrementally cache conversation history too. Static prefixes under ~1,024 tokens get a warning: most providers won't cache prefixes that small, so the discount may not materialize.</p>
+      <p class="note">Anthropic and DeepSeek charge a premium on cache writes; OpenAI and Google don't (write = input price). The rates live in the Model prices table — all editable.</p>
+
+      <h3>Real-life examples</h3>
+
+      <div class="example">
+        <h4>1 · Customer-support chatbot (single agent, RAG)</h4>
+        <p>One "Support Assistant" on Sonnet 5. System prompt with policies and persona ≈ 2,000 tokens; three tools (<code>search_kb</code>, <code>get_order</code>, <code>escalate</code>) ≈ 600 tokens of schemas; user question ≈ 120 tokens; answers ≈ 250 tokens/turn; a knowledge-base result ≈ 800 tokens/turn. Iterations 1 / 2 / 4 — best case answers directly, typical does one retrieval, worst does three.</p>
+        <p>Typical scenario, worked: 2 turns → static 2,600 written once, read once; user 240; history 1,050 (turn 2 carries turn 1's answer + retrieval); output 500. At Sonnet 5 rates that's ≈ <strong>$0.022/request</strong> → at 5,000 requests/day ≈ <strong>$110/day, ~$3.3k/month</strong>. The worst-case tab will show roughly 3× that — your retrieval hit-rate is the biggest cost lever.</p>
+      </div>
+
+      <div class="example">
+        <h4>2 · Code-review pipeline (orchestrator + subagents)</h4>
+        <p>An Orchestrator (Opus 4.8) receives a pull request, splits it, and calls a Reviewer (Sonnet 5) <strong>once per changed file</strong> — calls 1 / 3 / 8. Each Reviewer runs a 2-turn loop (read diff → verify) with ~1,000-token tool results, and calls a Linter (Haiku 4.5) once.</p>
+        <p>The invocation math chains: Reviewer = 1 × 3 = 3 typical; Linter = 3 × 1 = 3. In the worst case (8 files) the Reviewer runs 8× and the Linter 8× — the Estimate panel shows how the cheap-per-call Reviewer dominates total cost through fan-out, which is the classic surprise in multi-agent budgets.</p>
+      </div>
+
+      <div class="example">
+        <h4>3 · Shared specialist (why calls live on the caller)</h4>
+        <p>A research product has a Planner and a Builder, both entry-pointed from an Orchestrator, and both call the same "Explore" agent — Planner ×4 per run (scoping), Builder ×2 (verification). Explore's invocations sum across callers: 1×4 + 1×2 = <strong>6 per request</strong>.</p>
+        <p>Because calls are recorded on the calling agent, you model this without duplicating Explore — and Explore's card shows "Called by Planner (×4 typical), Builder (×2 typical)" so the sharing stays visible. To evaluate "what if Builder trusted Planner's research?", set Builder→Explore to 0 in the best case and compare tabs.</p>
+      </div>
+
+      <h3>Reading the Estimate panel</h3>
+      <table>
+        <tr><th>Column</th><th>Meaning (per request, all invocations included)</th></tr>
+        <tr><td>Invocations</td><td>How many times this agent runs per request in the selected scenario</td></tr>
+        <tr><td>Static</td><td>System prompt + tool schemas, re-sent every turn (cached when eligible)</td></tr>
+        <tr><td>User input</td><td>The agent's input message, re-sent every turn of its loop</td></tr>
+        <tr><td>History</td><td>Accumulated prior outputs + tool results carried into later turns</td></tr>
+        <tr><td>Output</td><td>Generated tokens (usually the most expensive per token)</td></tr>
+        <tr><td>Cost / req</td><td>This agent's dollar share of one request</td></tr>
+      </table>
+
+      <h3>Tips &amp; limitations</h3>
+      <ul>
+        <li><strong>Compare architectures, don't just price one.</strong> Duplicate via Export → edit → Import, or flip one agent's model/provider and watch the totals move.</li>
+        <li><strong>Toggle caching off</strong> for a hard upper bound — useful when you can't guarantee cache hit rates (bursty traffic, prefixes that change per user).</li>
+        <li><strong>History is often the sleeper cost.</strong> A 5k-token tool result carried through 6 more turns costs more than the system prompt. If worst-case history dominates, that's an argument for context editing or summarization in the real system.</li>
+        <li><strong>Token counts are chars÷4.</strong> Real tokenizers differ by ±20–30%, more for code and non-English text. For precision, run representative text through your provider's token-counting API and overwrite the numbers.</li>
+        <li><strong>Prices go stale.</strong> Defaults were sourced July 2026 — verify against provider pricing pages before betting a budget on them; everything is editable under Model prices.</li>
+        <li><strong>Not modeled:</strong> thinking/reasoning token surcharges, batch-API discounts, long-context price tiers, per-image token costs, and rate-limit-driven retries. Pad worst case accordingly if these apply to you.</li>
+      </ul>
+
+    </div>
+    <div style="margin-top:16px; text-align:right;">
+      <button class="btn primary" id="closeGuide">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<div class="modal-backdrop" id="exportBackdrop">
+  <div class="modal">
+    <h2>Export architecture</h2>
+    <p class="panel-sub" style="margin-top:-6px;">Saves as <code id="exportFilename" style="font-family:var(--mono); color:var(--accent-ink);"></code>. Select all &amp; copy, or try the download button — some environments block automatic downloads, so copy is the guaranteed path.</p>
+    <textarea id="exportText" readonly style="width:100%; min-height:260px; font-family:var(--mono); font-size:11.5px; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); color:var(--ink); resize:vertical;"></textarea>
+    <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end; flex-wrap:wrap;">
+      <span id="exportStatus" style="align-self:center; font-size:12px; color:var(--good); font-weight:700;"></span>
+      <button class="btn" id="downloadExport">Download .json</button>
+      <button class="btn primary" id="copyExport">Copy to clipboard</button>
+      <button class="btn ghost" id="closeExport">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORAGE_KEY = "token-ledger-state-v1";
+
+  var PROVIDERS = {
+    anthropic: "Anthropic",
+    openai: "OpenAI",
+    google: "Google",
+    deepseek: "DeepSeek"
+  };
+
+  // Prices are $ / 1M tokens. cacheWrite/cacheRead default to the input price
+  // (no write premium) with a discounted read where the provider publishes one —
+  // see the chat this was built in for sourcing notes (as of 2026-07).
+  var DEFAULT_PRICES = {
+    // Anthropic
+    opus48: { provider: "anthropic", label: "Opus 4.8 / 4.7", input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+    sonnet5: { provider: "anthropic", label: "Sonnet 5", input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+    sonnet46: { provider: "anthropic", label: "Sonnet 4.6", input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+    haiku45: { provider: "anthropic", label: "Haiku 4.5", input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+    fable5: { provider: "anthropic", label: "Fable 5", input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
+    // OpenAI (cache write = input price, no premium; cache read = published "cached input" rate)
+    gpt56sol: { provider: "openai", label: "GPT-5.6 Sol", input: 5, output: 30, cacheWrite: 5, cacheRead: 0.5 },
+    gpt56terra: { provider: "openai", label: "GPT-5.6 Terra", input: 2.5, output: 15, cacheWrite: 2.5, cacheRead: 0.25 },
+    gpt56luna: { provider: "openai", label: "GPT-5.6 Luna", input: 1, output: 6, cacheWrite: 1, cacheRead: 0.1 },
+    gpt54mini: { provider: "openai", label: "GPT-5.4 Mini", input: 0.75, output: 4.5, cacheWrite: 0.75, cacheRead: 0.075 },
+    gpt54nano: { provider: "openai", label: "GPT-5.4 Nano", input: 0.2, output: 1.25, cacheWrite: 0.2, cacheRead: 0.02 },
+    o4mini: { provider: "openai", label: "o4-mini", input: 0.55, output: 2.2, cacheWrite: 0.55, cacheRead: 0.055 },
+    // Google Gemini (cache write = input price; cache read = published "context caching" rate)
+    gemini31pro: { provider: "google", label: "Gemini 3.1 Pro", input: 2, output: 12, cacheWrite: 2, cacheRead: 0.2 },
+    gemini36flash: { provider: "google", label: "Gemini 3.6 Flash", input: 1.5, output: 7.5, cacheWrite: 1.5, cacheRead: 0.15 },
+    gemini35flash: { provider: "google", label: "Gemini 3.5 Flash", input: 1.5, output: 9, cacheWrite: 1.5, cacheRead: 0.15 },
+    gemini35flashlite: { provider: "google", label: "Gemini 3.5 Flash-Lite", input: 0.3, output: 2.5, cacheWrite: 0.3, cacheRead: 0.03 },
+    // DeepSeek (cache write = "cache miss" input rate; cache read = "cache hit" rate)
+    dsv4flash: { provider: "deepseek", label: "DeepSeek V4 Flash", input: 0.14, output: 0.28, cacheWrite: 0.14, cacheRead: 0.0028 },
+    dsv4pro: { provider: "deepseek", label: "DeepSeek V4 Pro", input: 0.435, output: 0.87, cacheWrite: 0.435, cacheRead: 0.003625 }
+  };
+
+  function uid() { return "a" + Math.random().toString(36).slice(2, 9); }
+
+  function defaultAgent(overrides) {
+    return Object.assign({
+      id: uid(),
+      name: "Orchestrator",
+      provider: "anthropic",
+      model: "opus48",
+      systemPrompt: "",
+      tools: [],
+      userInput: "",
+      outputTokens: 400,
+      toolResultTokens: 0,
+      iterations: { best: 1, typical: 1, worst: 1 },
+      cacheEligible: true
+    }, overrides || {});
+  }
+
+  function defaultEdge(fromId, toId, overrides) {
+    return Object.assign({
+      id: uid(),
+      from: fromId,
+      to: toId,
+      calls: { best: 1, typical: 2, worst: 4 }
+    }, overrides || {});
+  }
+
+  function defaultState() {
+    return {
+      sessionName: "",
+      traffic: 1000,
+      cachingEnabled: true,
+      prices: JSON.parse(JSON.stringify(DEFAULT_PRICES)),
+      agents: [defaultAgent({ name: "Orchestrator" })],
+      edges: []
+    };
+  }
+
+  function slugify(name) {
+    var s = (name || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return s || "token-ledger-model";
+  }
+
+  // Edges are stored from the CALLING agent's side: "what does this agent
+  // call, and how often" — not "who spawned me." This lets one specialist
+  // agent be called by several different parents, each at its own rate; the
+  // invocation math (below) sums contributions across all callers.
+  function edgesFrom(agentId) {
+    return state.edges.filter(function (e) { return e.from === agentId; });
+  }
+  function edgesTo(agentId) {
+    return state.edges.filter(function (e) { return e.to === agentId; });
+  }
+
+  var state = loadState();
+
+  function loadState() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      var parsed = JSON.parse(raw);
+      if (!parsed.agents || !parsed.agents.length) return defaultState();
+      return migrateState(parsed);
+    } catch (e) { return defaultState(); }
+  }
+
+  // Backfills `provider` for models/agents saved before multi-provider support,
+  // and converts the old single-caller `parentId`/`calls` fields (spawned-by,
+  // stored on the child) into the DAG `edges` list (calls-out, stored on the
+  // caller) used by the current build.
+  function migrateState(parsed) {
+    if (parsed.sessionName === undefined) parsed.sessionName = "";
+    parsed.prices = parsed.prices || {};
+    Object.keys(parsed.prices).forEach(function (key) {
+      if (!parsed.prices[key].provider) {
+        parsed.prices[key].provider = (DEFAULT_PRICES[key] && DEFAULT_PRICES[key].provider) || "anthropic";
+      }
+    });
+    parsed.agents.forEach(function (a) {
+      if (!a.provider) {
+        a.provider = (parsed.prices[a.model] && parsed.prices[a.model].provider) || "anthropic";
+      }
+      if (a.toolResultTokens === undefined) a.toolResultTokens = 0;
+    });
+    if (!parsed.edges) {
+      parsed.edges = [];
+      parsed.agents.forEach(function (a) {
+        if (a.parentId) {
+          parsed.edges.push(defaultEdge(a.parentId, a.id, { calls: a.calls || { best: 1, typical: 2, worst: 4 } }));
+        }
+        delete a.parentId;
+        delete a.calls;
+      });
+    }
+    return parsed;
+  }
+
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  // Inline toast — alert()/confirm() are silently blocked in the sandboxed
+  // artifact iframe, so user-facing messages must render in-page.
+  var toastTimer = null;
+  function notify(message, isError) {
+    var el = document.getElementById("toast");
+    el.textContent = message;
+    el.classList.toggle("error", !!isError);
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove("show"); }, 4000);
+  }
+
+  function estimateTokens(text) {
+    var t = (text || "").trim();
+    if (!t) return 0;
+    return Math.ceil(t.length / 4);
+  }
+
+  function agentStaticTokens(agent) {
+    var sys = estimateTokens(agent.systemPrompt);
+    var tools = agent.tools.reduce(function (sum, t) { return sum + estimateTokens(t.text); }, 0);
+    return sys + tools;
+  }
+
+  function staticHintText(agent) {
+    var staticT = agentStaticTokens(agent);
+    var text = estimateTokens(agent.userInput) + " tokens · static " + staticT + " tokens";
+    if (state.cachingEnabled && agent.cacheEligible && staticT > 0 && staticT < 1024) {
+      text += " — below most providers' minimum cacheable prefix (~1–4k); may not cache in practice";
+    }
+    return text;
+  }
+
+  function getPrice(model) {
+    return state.prices[model] || { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, label: model };
+  }
+
+  // Invocations of an agent = sum, over every edge that calls it, of
+  // (invocations of that caller × that edge's calls-per-invocation). An agent
+  // with no incoming edges is an entry point and is invoked once per request.
+  // An agent whose incoming edges all carry 0 calls in this scenario is
+  // genuinely not invoked — its invocations are 0, not forced to 1, so
+  // "0 calls in the best case" correctly produces zero cost.
+  // `seen` guards against cycles (an edge back into its own call chain): a
+  // caller already on the current path contributes nothing further. A result
+  // computed with a cycle-skip is path-dependent, so it is NOT memoized —
+  // caching it could poison the count other call paths see.
+  function computeInvocations(scenario) {
+    var memo = {};
+    function invocationsOf(agentId, seen) {
+      if (memo[agentId] !== undefined) return memo[agentId];
+      var incoming = edgesTo(agentId);
+      if (!incoming.length) {
+        memo[agentId] = 1;
+        return 1;
+      }
+      var total = 0;
+      var sawCycle = false;
+      incoming.forEach(function (edge) {
+        if (seen.indexOf(edge.from) !== -1) { sawCycle = true; return; }
+        var callsN = (edge.calls && edge.calls[scenario]) || 0;
+        if (!callsN) return;
+        total += invocationsOf(edge.from, seen.concat([agentId])) * callsN;
+      });
+      if (!sawCycle) memo[agentId] = total;
+      return total;
+    }
+    var result = {};
+    state.agents.forEach(function (a) { result[a.id] = invocationsOf(a.id, []); });
+    return result;
+  }
+
+  // Per-turn context model. Turn k of a loop sends:
+  //   static prefix (system + tool schemas)
+  //   + the user/task input (re-sent EVERY turn, not just the first)
+  //   + history: outputs and tool results of all turns before k
+  // and produces one output. Tool results are input-only tokens: turn k's
+  // result first appears in turn k+1's context, so across n turns each
+  // per-turn quantity accumulates as (n-1)·n/2.
+  //
+  // Caching (when on and eligible): the static prefix is written to cache once
+  // per REQUEST — sibling invocations of the same agent within a request reuse
+  // the warm entry, so writes don't scale with invocation count. With expected
+  // (possibly fractional) invocations `inv`, the write is static × min(inv, 1)
+  // and every remaining turn's prefix is a cache read. User input and history
+  // are billed at the full input rate — conservative, since real providers
+  // may incrementally cache the conversation too.
+  function computeScenario(scenario) {
+    var invocations = computeInvocations(scenario);
+    var rows = state.agents.map(function (agent) {
+      var price = getPrice(agent.model);
+      var iterations = Math.max(1, (agent.iterations && agent.iterations[scenario]) || 1);
+      var staticTokens = agentStaticTokens(agent);
+      var userInputTokens = estimateTokens(agent.userInput);
+      var outputPerTurn = Math.max(0, Number(agent.outputTokens) || 0);
+      var toolResultPerTurn = Math.max(0, Number(agent.toolResultTokens) || 0);
+
+      var inv = invocations[agent.id];
+      if (inv === undefined) inv = 1;
+      var totalTurns = inv * iterations;
+
+      // Per-request totals (already multiplied by invocations)
+      var historyTokens = (outputPerTurn + toolResultPerTurn) * ((iterations - 1) * iterations / 2) * inv;
+      var userTokensTotal = userInputTokens * iterations * inv;
+      var staticTokensTotal = staticTokens * totalTurns;
+      var outputTokensTotal = outputPerTurn * totalTurns;
+
+      var cacheWriteTokens = 0, cacheReadTokens = 0;
+      var normalInputTokens = userTokensTotal + historyTokens;
+      var caching = state.cachingEnabled && agent.cacheEligible && staticTokens > 0 && totalTurns > 0;
+      if (caching) {
+        cacheWriteTokens = staticTokens * Math.min(inv, 1);
+        cacheReadTokens = Math.max(0, staticTokensTotal - cacheWriteTokens);
+      } else {
+        normalInputTokens += staticTokensTotal;
+      }
+
+      var totalCost =
+        (normalInputTokens * price.input +
+          cacheWriteTokens * price.cacheWrite +
+          cacheReadTokens * price.cacheRead +
+          outputTokensTotal * price.output) / 1e6;
+
+      return {
+        agent: agent,
+        invocations: inv,
+        staticTokens: staticTokensTotal,
+        userInputTokens: userTokensTotal,
+        historyTokens: historyTokens,
+        outputTokens: outputTokensTotal,
+        cacheWriteTokens: cacheWriteTokens,
+        cacheReadTokens: cacheReadTokens,
+        normalInputTokens: normalInputTokens,
+        totalCost: totalCost,
+        totalTokens: staticTokensTotal + userTokensTotal + historyTokens + outputTokensTotal
+      };
+    });
+
+    var totals = rows.reduce(function (acc, r) {
+      acc.cost += r.totalCost;
+      acc.tokens += r.totalTokens;
+      return acc;
+    }, { cost: 0, tokens: 0 });
+
+    return { rows: rows, totals: totals };
+  }
+
+  // ---------- Rendering ----------
+
+  var currentScenario = "typical";
+
+  function fmtTokens(n) {
+    n = Math.round(n);
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+    return String(n);
+  }
+  function fmtUSD(n) {
+    if (n < 0.01 && n > 0) return "$" + n.toFixed(4);
+    if (n >= 1000) return "$" + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    return "$" + n.toFixed(2);
+  }
+
+  function providerOptions(selected) {
+    return Object.keys(PROVIDERS).map(function (key) {
+      return '<option value="' + key + '"' + (key === selected ? " selected" : "") + ">" + escapeHtml(PROVIDERS[key]) + "</option>";
+    }).join("");
+  }
+
+  function modelsForProvider(provider) {
+    return Object.keys(state.prices).filter(function (key) {
+      return state.prices[key].provider === provider;
+    });
+  }
+
+  function modelOptions(selected, provider) {
+    var keys = modelsForProvider(provider);
+    if (!keys.length) return '<option value="">— no models —</option>';
+    return keys.map(function (key) {
+      var p = state.prices[key];
+      return '<option value="' + key + '"' + (key === selected ? " selected" : "") + ">" + escapeHtml(p.label) + "</option>";
+    }).join("");
+  }
+
+  function callTargetOptions(fromAgentId, selectedId) {
+    var opts = "";
+    state.agents.forEach(function (a) {
+      if (a.id === fromAgentId) return;
+      opts += '<option value="' + a.id + '"' + (selectedId === a.id ? " selected" : "") + ">" + escapeHtml(a.name) + "</option>";
+    });
+    return opts;
+  }
+
+  function escapeHtml(s) {
+    return String(s || "").replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function renderAgents() {
+    var list = document.getElementById("agentList");
+    list.innerHTML = "";
+    state.agents.forEach(function (agent) {
+      var incoming = edgesTo(agent.id);
+      var isRoot = !incoming.length;
+      var card = document.createElement("div");
+      card.className = "agent-card" + (isRoot ? " root" : "");
+      card.dataset.id = agent.id;
+
+      var toolsHtml = agent.tools.map(function (t, i) {
+        return '<div class="tool-row" data-tool-index="' + i + '">' +
+          '<input type="text" class="tool-name" placeholder="tool name" value="' + escapeHtml(t.name) + '">' +
+          '<input type="text" class="tool-text" placeholder="schema / description (for token size)" value="' + escapeHtml(t.text) + '">' +
+          '<button class="icon-btn remove-tool" title="Remove tool">×</button>' +
+          "</div>";
+      }).join("");
+
+      var calledByHtml = isRoot
+        ? '<div class="called-by-hint">Entry point — invoked once per request.</div>'
+        : '<div class="called-by-hint">Called by ' + incoming.map(function (e) {
+            var caller = state.agents.find(function (a) { return a.id === e.from; });
+            return escapeHtml(caller ? caller.name : "(deleted)") + " (×" + e.calls.typical + " typical)";
+          }).join(", ") + '</div>';
+
+      var callsOutHtml = edgesFrom(agent.id).map(function (edge) {
+        return '<div class="call-grid call-row" data-edge-id="' + edge.id + '">' +
+          '<select class="call-target-select">' + callTargetOptions(agent.id, edge.to) + '</select>' +
+          '<input type="number" min="0" step="0.1" class="call-best" value="' + edge.calls.best + '" title="Best case">' +
+          '<input type="number" min="0" step="0.1" class="call-typical" value="' + edge.calls.typical + '" title="Typical">' +
+          '<input type="number" min="0" step="0.1" class="call-worst" value="' + edge.calls.worst + '" title="Worst case">' +
+          '<button class="icon-btn remove-call" title="Remove call">×</button>' +
+          "</div>";
+      }).join("");
+      var canAddCall = state.agents.length > 1;
+
+      card.innerHTML =
+        '<button class="icon-btn remove-agent" title="Remove agent">×</button>' +
+        '<div class="row-top">' +
+        '<input type="text" class="name-input" value="' + escapeHtml(agent.name) + '">' +
+        '</div>' +
+        calledByHtml +
+        '<div class="two-col">' +
+        '<div><label class="mini">Provider</label><select class="provider-select">' + providerOptions(agent.provider) + '</select></div>' +
+        '<div><label class="mini">Model</label><select class="model-select">' + modelOptions(agent.model, agent.provider) + '</select></div>' +
+        '</div>' +
+        '<label class="mini">System prompt</label>' +
+        '<textarea class="system-prompt" placeholder="Paste or sketch the system prompt...">' + escapeHtml(agent.systemPrompt) + '</textarea>' +
+        '<div class="token-hint">' + estimateTokens(agent.systemPrompt) + ' tokens</div>' +
+        '<label class="mini">Tools</label>' +
+        '<div class="tools-list">' + toolsHtml + '</div>' +
+        '<button class="btn small add-tool">+ Add tool</button>' +
+        '<label class="mini">Avg user input (per call)</label>' +
+        '<textarea class="user-input" placeholder="Representative user message...">' + escapeHtml(agent.userInput) + '</textarea>' +
+        '<div class="token-hint">' + staticHintText(agent) + '</div>' +
+        '<div class="two-col">' +
+        '<div><label class="mini">Avg output tokens (per turn)</label>' +
+        '<input type="number" class="output-tokens" min="0" value="' + agent.outputTokens + '"></div>' +
+        '<div><label class="mini">Avg tool result tokens (per turn)</label>' +
+        '<input type="number" class="tool-result-tokens" min="0" value="' + (agent.toolResultTokens || 0) + '"></div>' +
+        '</div>' +
+        '<label class="mini">Loop iterations (turns this agent takes with itself) — best / typical / worst</label>' +
+        '<div class="three-col">' +
+        '<input type="number" min="1" class="iter-best" value="' + agent.iterations.best + '">' +
+        '<input type="number" min="1" class="iter-typical" value="' + agent.iterations.typical + '">' +
+        '<input type="number" min="1" class="iter-worst" value="' + agent.iterations.worst + '">' +
+        '</div>' +
+        '<label class="mini">Calls — which agents this one invokes</label>' +
+        (callsOutHtml ? '<div class="call-grid call-row-head"><span>Target</span><span>Best</span><span>Typical</span><span>Worst</span><span></span></div>' : '') +
+        '<div class="calls-out-list">' + callsOutHtml + '</div>' +
+        (canAddCall ? '<button class="btn small add-call">+ Add call</button>' : '') +
+        '<label class="checkbox-row"><input type="checkbox" class="cache-eligible"' + (agent.cacheEligible ? " checked" : "") + '> Static prefix is cache-eligible</label>';
+
+      list.appendChild(card);
+    });
+
+    if (!state.agents.length) {
+      list.innerHTML = '<div class="empty-note">No agents yet — add one to begin.</div>';
+    }
+  }
+
+  function renderBreakdown() {
+    var result = computeScenario(currentScenario);
+    var table = document.getElementById("breakdownTable");
+    var html = "<thead><tr><th>Agent</th><th>Invocations</th><th>Static</th><th>User input</th><th>History</th><th>Output</th><th>Cost / req</th></tr></thead><tbody>";
+    result.rows.forEach(function (r) {
+      html += "<tr><td>" + escapeHtml(r.agent.name) + "</td>" +
+        "<td>" + (Math.round(r.invocations * 100) / 100) + "×</td>" +
+        "<td>" + fmtTokens(r.staticTokens) + "</td>" +
+        "<td>" + fmtTokens(r.userInputTokens) + "</td>" +
+        "<td>" + fmtTokens(r.historyTokens) + "</td>" +
+        "<td>" + fmtTokens(r.outputTokens) + "</td>" +
+        "<td>" + fmtUSD(r.totalCost) + "</td></tr>";
+    });
+    html += '<tr class="total"><td>Total</td><td></td><td></td><td></td><td></td><td>' + fmtTokens(result.totals.tokens) + "</td><td>" + fmtUSD(result.totals.cost) + "</td></tr>";
+    html += "</tbody>";
+    table.innerHTML = html;
+  }
+
+  function renderProjection() {
+    var traffic = Math.max(0, Number(state.traffic) || 0);
+    document.getElementById("volumeSub").textContent =
+      traffic.toLocaleString() + " requests/day across best, typical, and worst-case scenarios.";
+    var grid = document.getElementById("projGrid");
+    var scenarios = [
+      { key: "best", label: "Best case" },
+      { key: "typical", label: "Typical" },
+      { key: "worst", label: "Worst case" }
+    ];
+    grid.innerHTML = scenarios.map(function (s) {
+      var result = computeScenario(s.key);
+      var daily = result.totals.cost * traffic;
+      var monthly = daily * 30;
+      var dailyTokens = result.totals.tokens * traffic;
+      return '<div class="proj-card' + (s.key === "typical" ? " typical" : "") + '">' +
+        '<div class="label">' + s.label + '</div>' +
+        '<div class="value">' + fmtUSD(daily) + ' / day</div>' +
+        '<div class="sub">' + fmtUSD(monthly) + ' / mo · ' + fmtTokens(dailyTokens) + ' tok/day</div>' +
+        "</div>";
+    }).join("");
+  }
+
+  function renderScenarioTabs() {
+    var buttons = document.querySelectorAll("#scenarioTabs button");
+    buttons.forEach(function (b) {
+      b.classList.toggle("active", b.dataset.s === currentScenario);
+    });
+  }
+
+  function renderAll() {
+    syncTopBar();
+    renderAgents();
+    renderBreakdown();
+    renderProjection();
+    renderScenarioTabs();
+    saveState();
+  }
+
+  // Keeps the top-bar controls (traffic, caching toggle, session name) in
+  // sync with `state` — needed after Reset/Import replace `state` wholesale,
+  // since those inputs aren't otherwise re-rendered like the agent cards are.
+  function syncTopBar() {
+    document.getElementById("trafficInput").value = state.traffic;
+    document.getElementById("cachingToggle").checked = state.cachingEnabled;
+    document.getElementById("sessionNameInput").value = state.sessionName || "";
+  }
+
+  // ---------- Event wiring ----------
+
+  document.getElementById("scenarioTabs").addEventListener("click", function (e) {
+    var btn = e.target.closest("button[data-s]");
+    if (!btn) return;
+    currentScenario = btn.dataset.s;
+    renderScenarioTabs();
+    renderBreakdown();
+  });
+
+  document.getElementById("cachingToggle").addEventListener("change", function (e) {
+    state.cachingEnabled = e.target.checked;
+    renderAll();
+  });
+
+  document.getElementById("trafficInput").addEventListener("input", function (e) {
+    state.traffic = Number(e.target.value) || 0;
+    renderProjection();
+    saveState();
+  });
+
+  document.getElementById("addAgentBtn").addEventListener("click", function () {
+    var isFirst = state.agents.length === 0;
+    var rootCandidate = state.agents.find(function (a) { return !edgesTo(a.id).length; });
+    var newAgent = defaultAgent({
+      name: isFirst ? "Orchestrator" : "Subagent",
+      iterations: isFirst ? { best: 1, typical: 1, worst: 1 } : { best: 1, typical: 2, worst: 4 }
+    });
+    state.agents.push(newAgent);
+    if (!isFirst && rootCandidate) {
+      state.edges.push(defaultEdge(rootCandidate.id, newAgent.id));
+    }
+    renderAll();
+  });
+
+  // Two-step inline confirm — avoids window.confirm(), which the sandboxed
+  // artifact iframe silently blocks (click does nothing, no dialog appears).
+  var resetArmed = false, resetArmTimer = null;
+  document.getElementById("resetBtn").addEventListener("click", function () {
+    var btn = this;
+    if (!resetArmed) {
+      resetArmed = true;
+      btn.textContent = "Click again to confirm";
+      btn.classList.add("danger");
+      clearTimeout(resetArmTimer);
+      resetArmTimer = setTimeout(function () {
+        resetArmed = false;
+        btn.textContent = "Reset";
+        btn.classList.remove("danger");
+      }, 3000);
+      return;
+    }
+    clearTimeout(resetArmTimer);
+    resetArmed = false;
+    btn.textContent = "Reset";
+    btn.classList.remove("danger");
+    state = defaultState();
+    renderAll();
+  });
+
+  // Export opens a modal with the JSON in a selectable textarea — the
+  // guaranteed path (manual select-all + copy) — plus best-effort copy and
+  // download buttons. A programmatic <a download> click alone isn't reliable
+  // here: this page can run inside a sandboxed iframe (e.g. the published
+  // artifact view) that silently blocks automatic downloads, the same way it
+  // blocks window.confirm(). Wrapping both in try/catch means they degrade
+  // to "didn't work, but the text is right there" instead of doing nothing.
+  function exportJSON() {
+    return JSON.stringify(state, null, 2);
+  }
+
+  document.getElementById("exportBtn").addEventListener("click", function () {
+    var textarea = document.getElementById("exportText");
+    textarea.value = exportJSON();
+    document.getElementById("exportFilename").textContent = slugify(state.sessionName) + ".json";
+    document.getElementById("exportStatus").textContent = "";
+    document.getElementById("exportBackdrop").classList.add("open");
+    textarea.focus();
+    textarea.select();
+  });
+
+  document.getElementById("closeExport").addEventListener("click", function () {
+    document.getElementById("exportBackdrop").classList.remove("open");
+  });
+  document.getElementById("exportBackdrop").addEventListener("click", function (e) {
+    if (e.target === this) this.classList.remove("open");
+  });
+
+  document.getElementById("copyExport").addEventListener("click", function () {
+    var textarea = document.getElementById("exportText");
+    var status = document.getElementById("exportStatus");
+    textarea.focus();
+    textarea.select();
+    function ok() { status.style.color = "var(--good)"; status.textContent = "Copied."; }
+    function fail() { status.style.color = "var(--bad)"; status.textContent = "Couldn't auto-copy — select the text and press Ctrl/Cmd+C."; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(textarea.value).then(ok, function () {
+        try { if (document.execCommand("copy")) ok(); else fail(); } catch (e) { fail(); }
+      });
+    } else {
+      try { if (document.execCommand("copy")) ok(); else fail(); } catch (e) { fail(); }
+    }
+  });
+
+  // There is no reliable way to detect whether a sandboxed iframe actually
+  // let the download through — a.click() on a download link doesn't throw,
+  // it's just silently ignored — so this can never honestly claim success.
+  // It tries two techniques back to back and always points back at Copy.
+  document.getElementById("downloadExport").addEventListener("click", function () {
+    var status = document.getElementById("exportStatus");
+    status.style.color = "var(--ink-soft)";
+    status.textContent = "Attempting download… if nothing appears in a few seconds, this environment is blocking it — use Copy to clipboard instead (that always works).";
+    try {
+      var blob = new Blob([exportJSON()], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = slugify(state.sessionName) + ".json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Second technique: open the blob in a new tab. Some sandboxes that
+      // block the download attribute still permit this, and most browsers
+      // render an application/json blob as plain text rather than forcing a
+      // download, so the user can Ctrl/Cmd+S or select-all from there.
+      window.open(url, "_blank");
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    } catch (err) {
+      status.style.color = "var(--bad)";
+      status.textContent = "Download blocked here — use Copy to clipboard instead.";
+    }
+  });
+
+  document.getElementById("importBtn").addEventListener("click", function () {
+    document.getElementById("importFile").click();
+  });
+  document.getElementById("importFile").addEventListener("change", function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var parsed = JSON.parse(reader.result);
+        if (!parsed.agents) throw new Error("no agents");
+        state = migrateState(parsed);
+        renderAll();
+        notify("Imported “" + (state.sessionName || "unnamed session") + "”.");
+      } catch (err) {
+        notify("Could not read that file as a Token Ledger model.", true);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  });
+
+  // Delegated input handling for agent cards
+  document.getElementById("agentList").addEventListener("input", function (e) {
+    var card = e.target.closest(".agent-card");
+    if (!card) return;
+    var t = e.target;
+
+    var edgeRow = t.closest(".call-row");
+    if (edgeRow) {
+      var edge = state.edges.find(function (ed) { return ed.id === edgeRow.dataset.edgeId; });
+      if (!edge) return;
+      if (t.classList.contains("call-best")) edge.calls.best = Math.max(0, Number(t.value) || 0);
+      else if (t.classList.contains("call-typical")) edge.calls.typical = Math.max(0, Number(t.value) || 0);
+      else if (t.classList.contains("call-worst")) edge.calls.worst = Math.max(0, Number(t.value) || 0);
+      else return;
+      renderBreakdown();
+      renderProjection();
+      saveState();
+      return;
+    }
+
+    var agent = state.agents.find(function (a) { return a.id === card.dataset.id; });
+    if (!agent) return;
+
+    if (t.classList.contains("name-input")) agent.name = t.value; // "Called by"/target labels refresh on blur (see change handler) — no re-render here, or the input loses focus mid-keystroke
+    else if (t.classList.contains("system-prompt")) { agent.systemPrompt = t.value; updateHint(card, agent); }
+    else if (t.classList.contains("user-input")) { agent.userInput = t.value; updateHint(card, agent); }
+    else if (t.classList.contains("output-tokens")) agent.outputTokens = Number(t.value) || 0;
+    else if (t.classList.contains("tool-result-tokens")) agent.toolResultTokens = Math.max(0, Number(t.value) || 0);
+    else if (t.classList.contains("iter-best")) agent.iterations.best = Math.max(1, Number(t.value) || 1);
+    else if (t.classList.contains("iter-typical")) agent.iterations.typical = Math.max(1, Number(t.value) || 1);
+    else if (t.classList.contains("iter-worst")) agent.iterations.worst = Math.max(1, Number(t.value) || 1);
+    else if (t.classList.contains("tool-name") || t.classList.contains("tool-text")) {
+      var row = t.closest(".tool-row");
+      var idx = Number(row.dataset.toolIndex);
+      if (t.classList.contains("tool-name")) agent.tools[idx].name = t.value;
+      else { agent.tools[idx].text = t.value; updateHint(card, agent); } // tool schemas count toward the static prefix
+    } else { return; }
+
+    renderBreakdown();
+    renderProjection();
+    saveState();
+  });
+
+
+  function updateHint(card, agent) {
+    var hints = card.querySelectorAll(".token-hint");
+    if (hints[0]) hints[0].textContent = estimateTokens(agent.systemPrompt) + " tokens";
+    if (hints[1]) hints[1].textContent = staticHintText(agent);
+  }
+
+  document.getElementById("agentList").addEventListener("change", function (e) {
+    var card = e.target.closest(".agent-card");
+    if (!card) return;
+    var t = e.target;
+
+    var edgeRow = t.closest(".call-row");
+    if (edgeRow && t.classList.contains("call-target-select")) {
+      var edge = state.edges.find(function (ed) { return ed.id === edgeRow.dataset.edgeId; });
+      if (edge) { edge.to = t.value; renderAgents(); renderBreakdown(); renderProjection(); saveState(); }
+      return;
+    }
+
+    var agent = state.agents.find(function (a) { return a.id === card.dataset.id; });
+    if (!agent) return;
+    if (t.classList.contains("provider-select")) {
+      agent.provider = t.value;
+      var available = modelsForProvider(agent.provider);
+      if (available.indexOf(agent.model) === -1) agent.model = available[0] || "";
+    }
+    else if (t.classList.contains("model-select")) agent.model = t.value;
+    else if (t.classList.contains("cache-eligible")) agent.cacheEligible = t.checked;
+    else if (t.classList.contains("name-input")) { /* refresh cross-references below */ }
+    else return;
+    renderAgents();
+    renderBreakdown();
+    renderProjection();
+    saveState();
+  });
+
+  document.getElementById("agentList").addEventListener("click", function (e) {
+    var card = e.target.closest(".agent-card");
+    if (e.target.classList.contains("remove-agent")) {
+      var idRemove = card.dataset.id;
+      state.agents = state.agents.filter(function (a) { return a.id !== idRemove; });
+      state.edges = state.edges.filter(function (ed) { return ed.from !== idRemove && ed.to !== idRemove; });
+      renderAll();
+      return;
+    }
+    if (e.target.classList.contains("add-tool")) {
+      var agent1 = state.agents.find(function (a) { return a.id === card.dataset.id; });
+      agent1.tools.push({ name: "tool", text: "" });
+      renderAgents();
+      renderBreakdown();
+      renderProjection();
+      saveState();
+      return;
+    }
+    if (e.target.classList.contains("remove-tool")) {
+      var row = e.target.closest(".tool-row");
+      var idx = Number(row.dataset.toolIndex);
+      var agent2 = state.agents.find(function (a) { return a.id === card.dataset.id; });
+      agent2.tools.splice(idx, 1);
+      renderAgents();
+      renderBreakdown();
+      renderProjection();
+      saveState();
+      return;
+    }
+    if (e.target.classList.contains("add-call")) {
+      var fromId = card.dataset.id;
+      var target = state.agents.find(function (a) { return a.id !== fromId; });
+      if (!target) return;
+      state.edges.push(defaultEdge(fromId, target.id));
+      renderAgents();
+      renderBreakdown();
+      renderProjection();
+      saveState();
+      return;
+    }
+    if (e.target.classList.contains("remove-call")) {
+      var callRow = e.target.closest(".call-row");
+      state.edges = state.edges.filter(function (ed) { return ed.id !== callRow.dataset.edgeId; });
+      renderAgents();
+      renderBreakdown();
+      renderProjection();
+      saveState();
+      return;
+    }
+  });
+
+  // ---------- Price modal ----------
+
+  function renderPriceRows() {
+    var rows = document.getElementById("priceRows");
+    rows.innerHTML = "";
+    Object.keys(PROVIDERS).forEach(function (providerKey) {
+      var keysForProvider = Object.keys(state.prices).filter(function (key) {
+        return state.prices[key].provider === providerKey;
+      });
+      if (!keysForProvider.length) return;
+      var heading = document.createElement("div");
+      heading.className = "price-provider-heading";
+      heading.textContent = PROVIDERS[providerKey];
+      rows.appendChild(heading);
+      keysForProvider.forEach(function (key) {
+        var p = state.prices[key];
+        var row = document.createElement("div");
+        row.className = "price-row";
+        row.dataset.key = key;
+        row.innerHTML =
+          '<input type="text" class="p-label" value="' + escapeHtml(p.label) + '">' +
+          '<input type="number" step="0.001" class="p-input" value="' + p.input + '">' +
+          '<input type="number" step="0.001" class="p-output" value="' + p.output + '">' +
+          '<input type="number" step="0.001" class="p-cwrite" value="' + p.cacheWrite + '">' +
+          '<input type="number" step="0.0001" class="p-cread" value="' + p.cacheRead + '">' +
+          '<button class="icon-btn remove-price" title="Remove model">×</button>';
+        rows.appendChild(row);
+      });
+    });
+  }
+
+  document.getElementById("addPriceProvider").innerHTML = providerOptions("anthropic");
+
+  document.getElementById("openPrices").addEventListener("click", function () {
+    renderPriceRows();
+    document.getElementById("priceBackdrop").classList.add("open");
+  });
+  document.getElementById("closePrices").addEventListener("click", function () {
+    document.getElementById("priceBackdrop").classList.remove("open");
+  });
+  document.getElementById("priceBackdrop").addEventListener("click", function (e) {
+    if (e.target === this) this.classList.remove("open");
+  });
+
+  document.getElementById("priceRows").addEventListener("input", function (e) {
+    var row = e.target.closest(".price-row");
+    if (!row) return;
+    var key = row.dataset.key;
+    var p = state.prices[key];
+    if (!p) return;
+    if (e.target.classList.contains("p-label")) p.label = e.target.value;
+    else if (e.target.classList.contains("p-input")) p.input = Number(e.target.value) || 0;
+    else if (e.target.classList.contains("p-output")) p.output = Number(e.target.value) || 0;
+    else if (e.target.classList.contains("p-cwrite")) p.cacheWrite = Number(e.target.value) || 0;
+    else if (e.target.classList.contains("p-cread")) p.cacheRead = Number(e.target.value) || 0;
+    saveState();
+    renderBreakdown();
+    renderProjection();
+  });
+
+  document.getElementById("priceRows").addEventListener("click", function (e) {
+    if (!e.target.classList.contains("remove-price")) return;
+    var row = e.target.closest(".price-row");
+    var key = row.dataset.key;
+    delete state.prices[key];
+    state.agents.forEach(function (a) {
+      if (a.model !== key) return;
+      var fallback = modelsForProvider(a.provider)[0];
+      a.model = fallback || "";
+    });
+    renderPriceRows();
+    renderAgents();
+    renderBreakdown();
+    renderProjection();
+    saveState();
+  });
+
+  document.getElementById("addPriceRow").addEventListener("click", function () {
+    var key = "custom" + Math.random().toString(36).slice(2, 6);
+    var provider = document.getElementById("addPriceProvider").value;
+    state.prices[key] = { provider: provider, label: "Custom model", input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 };
+    renderPriceRows();
+    saveState();
+  });
+
+  document.getElementById("sessionNameInput").addEventListener("input", function (e) {
+    state.sessionName = e.target.value;
+    saveState();
+  });
+
+  // ---------- Guide modal ----------
+
+  document.getElementById("openGuide").addEventListener("click", function () {
+    document.getElementById("guideBackdrop").classList.add("open");
+  });
+  document.getElementById("closeGuide").addEventListener("click", function () {
+    document.getElementById("guideBackdrop").classList.remove("open");
+  });
+  document.getElementById("guideBackdrop").addEventListener("click", function (e) {
+    if (e.target === this) this.classList.remove("open");
+  });
+
+  // ---------- Init ----------
+
+  renderAll();
+})();
+</script>
