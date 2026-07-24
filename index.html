@@ -299,7 +299,7 @@
       <h2 style="font-size:15px;">Volume projection</h2>
       <p class="panel-sub" id="volumeSub"></p>
       <div class="proj-grid" id="projGrid"></div>
-      <div class="footnote">Pasted text is sized with a rough heuristic (~1 token per 4 characters); switch on <strong>Token counts only</strong> to enter exact counts and keep prompts out of the file. Prices cover Anthropic, OpenAI, Google, and DeepSeek as of 2026-07 — edit them under "Model prices" as providers update their rates. Treat results as an order-of-magnitude estimate, not a bill. Open the <strong>Guide</strong> (top bar) for the full calculation model and worked examples.</div>
+      <div class="footnote">Pasted text is sized with a rough heuristic (~1 token per 4 characters); switch on <strong>Token counts only</strong> to enter exact counts and keep prompts out of the file. Prices cover Anthropic (verified 2026-07-24 against platform.claude.com/docs/en/about-claude/pricing), OpenAI, Google, and DeepSeek — edit them under "Model prices" as providers update their rates. Treat results as an order-of-magnitude estimate, not a bill. Open the <strong>Guide</strong> (top bar) for the full calculation model and worked examples.</div>
     </section>
   </div>
 </div>
@@ -386,7 +386,7 @@ cacheRead  = static − cacheWrite</div>
 
       <div class="example">
         <h4>2 · Code-review pipeline (orchestrator + subagents)</h4>
-        <p>An Orchestrator (Opus 4.8) receives a pull request, splits it, and calls a Reviewer (Sonnet 5) <strong>once per changed file</strong> — calls 1 / 3 / 8. Each Reviewer runs a 2-turn loop (read diff → verify) with ~1,000-token tool results, and calls a Linter (Haiku 4.5) once.</p>
+        <p>An Orchestrator (Opus 5) receives a pull request, splits it, and calls a Reviewer (Sonnet 5) <strong>once per changed file</strong> — calls 1 / 3 / 8. Each Reviewer runs a 2-turn loop (read diff → verify) with ~1,000-token tool results, and calls a Linter (Haiku 4.5) once.</p>
         <p>The invocation math chains: Reviewer = 1 × 3 = 3 typical; Linter = 3 × 1 = 3. In the worst case (8 files) the Reviewer runs 8× and the Linter 8× — the Estimate panel shows how the cheap-per-call Reviewer dominates total cost through fan-out, which is the classic surprise in multi-agent budgets.</p>
       </div>
 
@@ -413,7 +413,7 @@ cacheRead  = static − cacheWrite</div>
         <li><strong>Toggle caching off</strong> for a hard upper bound — useful when you can't guarantee cache hit rates (bursty traffic, prefixes that change per user).</li>
         <li><strong>History is often the sleeper cost.</strong> A 5k-token tool result carried through 6 more turns costs more than the system prompt. If worst-case history dominates, that's an argument for context editing or summarization in the real system.</li>
         <li><strong>Pasted text is sized at chars÷4.</strong> Real tokenizers differ by ±20–30%, more for code and non-English text. For precision, run representative text through your provider's token-counting API, then switch on <strong>Token counts only</strong> and enter the exact figures.</li>
-        <li><strong>Prices go stale.</strong> Defaults were sourced July 2026 — verify against provider pricing pages before betting a budget on them; everything is editable under Model prices.</li>
+        <li><strong>Prices go stale.</strong> Anthropic defaults were last verified 2026-07-24; OpenAI/Google/DeepSeek defaults are from July 2026. Verify against provider pricing pages before betting a budget on them — everything is editable under Model prices. Note Sonnet 5's introductory pricing ($2/$10) rises to $3/$15 on 2026-09-01.</li>
         <li><strong>Not modeled:</strong> thinking/reasoning token surcharges, batch-API discounts, long-context price tiers, per-image token costs, and rate-limit-driven retries. Pad worst case accordingly if these apply to you.</li>
       </ul>
 
@@ -456,14 +456,20 @@ cacheRead  = static − cacheWrite</div>
 
   // Prices are $ / 1M tokens. cacheWrite/cacheRead default to the input price
   // (no write premium) with a discounted read where the provider publishes one —
-  // see the chat this was built in for sourcing notes (as of 2026-07).
+  // see the chat this was built in for sourcing notes. Anthropic prices last
+  // verified 2026-07-24 against https://platform.claude.com/docs/en/about-claude/pricing
+  // (cache write = 1.25x input for the 5-minute tier; cache read = 0.1x input).
   var DEFAULT_PRICES = {
     // Anthropic
-    opus48: { provider: "anthropic", label: "Opus 4.8 / 4.7", input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
-    sonnet5: { provider: "anthropic", label: "Sonnet 5", input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
-    sonnet46: { provider: "anthropic", label: "Sonnet 4.6", input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+    opus5: { provider: "anthropic", label: "Opus 5", input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+    opus48: { provider: "anthropic", label: "Opus 4.8 / 4.7 / 4.6 / 4.5", input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+    // Sonnet 5 introductory pricing runs through 2026-08-31; it rises to
+    // $3 / $15 (cache write $3.75, cache read $0.30) on 2026-09-01 — update
+    // this row then, or add a second "Sonnet 5 (standard)" row ahead of time.
+    sonnet5: { provider: "anthropic", label: "Sonnet 5 (intro thru 2026-08-31)", input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
+    sonnet46: { provider: "anthropic", label: "Sonnet 4.6 / 4.5", input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
     haiku45: { provider: "anthropic", label: "Haiku 4.5", input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
-    fable5: { provider: "anthropic", label: "Fable 5", input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
+    fable5: { provider: "anthropic", label: "Fable 5 / Mythos 5", input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
     // OpenAI (cache write = input price, no premium; cache read = published "cached input" rate)
     gpt56sol: { provider: "openai", label: "GPT-5.6 Sol", input: 5, output: 30, cacheWrite: 5, cacheRead: 0.5 },
     gpt56terra: { provider: "openai", label: "GPT-5.6 Terra", input: 2.5, output: 15, cacheWrite: 2.5, cacheRead: 0.25 },
@@ -488,7 +494,7 @@ cacheRead  = static − cacheWrite</div>
       id: uid(),
       name: "Orchestrator",
       provider: "anthropic",
-      model: "opus48",
+      model: "opus5",
       systemPrompt: "",
       systemPromptTokens: 0,
       tools: [],
