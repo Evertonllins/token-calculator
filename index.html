@@ -106,8 +106,14 @@
   }
 
   .grid { display: grid; grid-template-columns: minmax(320px, 380px) minmax(320px, 420px) 1fr; gap: 22px; align-items: start; }
-  @media (max-width: 1400px) { .grid { grid-template-columns: minmax(320px, 420px) 1fr; } }
-  @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+  .grid.ai-collapsed { grid-template-columns: minmax(320px, 380px) max-content 1fr; }
+  @media (max-width: 1400px) {
+    .grid { grid-template-columns: minmax(320px, 420px) 1fr; }
+    .grid.ai-collapsed { grid-template-columns: minmax(320px, 420px) max-content; }
+  }
+  @media (max-width: 980px) {
+    .grid, .grid.ai-collapsed { grid-template-columns: 1fr; }
+  }
 
   .panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -257,6 +263,10 @@
   .footnote { color: var(--ink-soft); font-size: 11.5px; margin-top: 18px; }
 
   .ai-architect-panel { display: flex; flex-direction: column; }
+  .ai-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .ai-panel-head h2 { margin: 0; white-space: nowrap; }
+  .ai-panel-head-btns { display: flex; gap: 6px; flex-shrink: 0; }
+  .ai-panel-body.hidden { display: none; }
   .ai-provider-row { display: flex; gap: 8px; margin-bottom: 8px; }
   .ai-provider-row select { flex: 0 0 130px; min-width: 0; }
   .ai-provider-row input { flex: 1; min-width: 0; }
@@ -314,25 +324,33 @@
     </section>
 
     <section class="panel ai-architect-panel">
-      <h2>AI Architect</h2>
-      <p class="panel-sub">Describe an architecture in plain language; a model drafts agents &amp; calls in the same shape as the panel on the left. Bring your own key — nothing leaves your browser except the request to the provider you pick.</p>
-      <div class="ai-provider-row">
-        <select id="aiProviderSelect">
-          <option value="openrouter">OpenRouter</option>
-          <option value="openai">OpenAI</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="google">Gemini</option>
-        </select>
-        <input type="text" id="aiModelInput" placeholder="model id" autocomplete="off">
+      <div class="ai-panel-head">
+        <h2>AI Architect</h2>
+        <div class="ai-panel-head-btns">
+          <button class="btn small ghost" id="aiClearBtn">Clear chat</button>
+          <button class="btn small" id="aiToggleBtn">Hide</button>
+        </div>
       </div>
-      <input type="password" id="aiKeyInput" class="ai-key-input" placeholder="API key for this provider" autocomplete="off">
-      <p class="ai-key-hint">Stored only in this browser's local storage, per provider. Some providers block direct browser requests (CORS) — OpenRouter is the most reliable.</p>
-      <div class="ai-chat-log" id="aiChatLog"></div>
-      <div class="ai-input-row">
-        <textarea id="aiChatInput" rows="2" placeholder="Describe the architecture you want, or ask for a change…"></textarea>
-        <button class="btn primary" id="aiSendBtn">Send</button>
+      <div class="ai-panel-body" id="aiPanelBody">
+        <p class="panel-sub">Describe an architecture in plain language; a model drafts agents &amp; calls in the same shape as the panel on the left. Bring your own key — nothing leaves your browser except the request to the provider you pick. Agent design always uses token counts, never prompt text — see “Token counts only” in the guide.</p>
+        <div class="ai-provider-row">
+          <select id="aiProviderSelect">
+            <option value="openrouter">OpenRouter</option>
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="google">Gemini</option>
+          </select>
+          <input type="text" id="aiModelInput" placeholder="model id" autocomplete="off">
+        </div>
+        <input type="password" id="aiKeyInput" class="ai-key-input" placeholder="API key for this provider" autocomplete="off">
+        <p class="ai-key-hint">Stored only in this browser's local storage, per provider. Some providers block direct browser requests (CORS) — OpenRouter is the most reliable.</p>
+        <div class="ai-chat-log" id="aiChatLog"></div>
+        <div class="ai-input-row">
+          <textarea id="aiChatInput" rows="2" placeholder="Describe the architecture you want, or ask for a change…"></textarea>
+          <button class="btn primary" id="aiSendBtn">Send</button>
+        </div>
+        <div class="ai-status" id="aiStatus"></div>
       </div>
-      <div class="ai-status" id="aiStatus"></div>
     </section>
 
     <section class="panel">
@@ -1057,7 +1075,7 @@ cacheRead  = static − cacheWrite</div>
               name: { type: "string" },
               provider: { type: "string", enum: providerKeys, description: "Which cost model to price this agent under." },
               model: { type: "string", enum: modelKeys, description: "Must be one of these exact keys." },
-              systemPrompt: { type: "string", description: "Illustrative system prompt text, used only to estimate size." },
+              systemPromptTokens: { type: "integer", description: "Estimated system prompt size in tokens. Token counts only — do not write the actual prompt text." },
               tools: {
                 type: "array",
                 items: {
@@ -1066,13 +1084,13 @@ cacheRead  = static − cacheWrite</div>
                   required: ["name", "tokens"]
                 }
               },
-              userInput: { type: "string", description: "Illustrative representative user input, used only to estimate size." },
+              userInputTokens: { type: "integer", description: "Estimated average user input size in tokens. Token counts only — do not write example input text." },
               outputTokens: { type: "integer", description: "Average output tokens per turn." },
               toolResultTokens: { type: "integer", description: "Average tool-result tokens per turn." },
               iterations: Object.assign({ description: "Self-loop turns per invocation (tool round-trips, retries)." }, scenarioTriple),
               cacheEligible: { type: "boolean" }
             },
-            required: ["name", "provider", "model", "systemPrompt", "tools", "userInput", "outputTokens", "toolResultTokens", "iterations", "cacheEligible"]
+            required: ["name", "provider", "model", "systemPromptTokens", "tools", "userInputTokens", "outputTokens", "toolResultTokens", "iterations", "cacheEligible"]
           }
         },
         edges: {
@@ -1177,7 +1195,7 @@ cacheRead  = static − cacheWrite</div>
   function defaultAiState() {
     var keys = {}, models = {};
     Object.keys(AI_PROVIDERS).forEach(function (p) { keys[p] = ""; models[p] = AI_PROVIDERS[p].defaultModel; });
-    return { provider: "openrouter", keys: keys, models: models, messages: [] };
+    return { provider: "openrouter", keys: keys, models: models, messages: [], collapsed: false };
   }
 
   function loadAiState() {
@@ -1190,7 +1208,8 @@ cacheRead  = static − cacheWrite</div>
         provider: AI_PROVIDERS[parsed.provider] ? parsed.provider : base.provider,
         keys: Object.assign(base.keys, parsed.keys || {}),
         models: Object.assign(base.models, parsed.models || {}),
-        messages: Array.isArray(parsed.messages) ? parsed.messages : []
+        messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+        collapsed: !!parsed.collapsed
       };
     } catch (e) { return base; }
   }
@@ -1231,11 +1250,11 @@ cacheRead  = static − cacheWrite</div>
         name: a.name,
         provider: PROVIDERS[a.provider] ? a.provider : "anthropic",
         model: model,
-        systemPrompt: a.systemPrompt || "",
-        systemPromptTokens: estimateTokens(a.systemPrompt),
+        systemPrompt: "",
+        systemPromptTokens: Math.max(0, Number(a.systemPromptTokens) || 0),
         tools: (a.tools || []).map(function (t) { return { text: "", name: t.name || "", tokens: Math.max(0, Number(t.tokens) || 0) }; }),
-        userInput: a.userInput || "",
-        userInputTokens: estimateTokens(a.userInput),
+        userInput: "",
+        userInputTokens: Math.max(0, Number(a.userInputTokens) || 0),
         outputTokens: Math.max(0, Number(a.outputTokens) || 0),
         toolResultTokens: Math.max(0, Number(a.toolResultTokens) || 0),
         iterations: {
@@ -1276,7 +1295,12 @@ cacheRead  = static − cacheWrite</div>
 
   function buildAiSystemPrompt() {
     var contextAgents = state.agents.map(function (a) {
-      return { name: a.name, provider: a.provider, model: a.model, tools: a.tools.map(function (t) { return t.name || "(unnamed tool)"; }), iterations: a.iterations };
+      return {
+        name: a.name, provider: a.provider, model: a.model,
+        tools: a.tools.map(function (t) { return { name: t.name || "(unnamed tool)", tokens: t.tokens }; }),
+        systemPromptTokens: a.systemPromptTokens, userInputTokens: a.userInputTokens,
+        outputTokens: a.outputTokens, toolResultTokens: a.toolResultTokens, iterations: a.iterations
+      };
     });
     var contextEdges = state.edges.map(function (e) {
       var from = state.agents.filter(function (a) { return a.id === e.from; })[0];
@@ -1286,8 +1310,11 @@ cacheRead  = static − cacheWrite</div>
     return "You design multi-agent LLM system architectures for cost estimation. Given a user's description, " +
       "propose or revise a set of agents and the calls between them, matching the required JSON schema exactly. " +
       "\"edges\" reference agents by their \"name\" (from/to) and mean \"the calling agent invokes the target this many times per invocation\", per scenario. " +
-      "An agent with no incoming edges is an entry point, invoked once per request. systemPrompt/userInput are illustrative text used only to estimate size; " +
-      "tools[].tokens is a rough token estimate for that tool's schema. Always return the FULL resulting architecture, not just a delta. " +
+      "An agent with no incoming edges is an entry point, invoked once per request. " +
+      "This app's default agent-design strategy is token counts only: never write actual system prompt text or example user input, even if the user's " +
+      "description includes real prompt wording or business logic — instead estimate a realistic systemPromptTokens and userInputTokens for an agent of " +
+      "that role (e.g. a well-specified tool-using agent's system prompt is commonly 300-1500 tokens; a short user turn is commonly 20-200 tokens). " +
+      "tools[].tokens is a rough token estimate for that tool's schema, also as a count only. Always return the FULL resulting architecture, not just a delta. " +
       "Current calculator state, which you are revising unless asked to start over: " + JSON.stringify({ agents: contextAgents, edges: contextEdges });
   }
 
@@ -1295,6 +1322,17 @@ cacheRead  = static − cacheWrite</div>
     document.getElementById("aiProviderSelect").value = aiState.provider;
     document.getElementById("aiModelInput").value = aiState.models[aiState.provider] || "";
     document.getElementById("aiKeyInput").value = aiState.keys[aiState.provider] || "";
+  }
+
+  // Collapsing hides the panel body and shrinks its grid column to content
+  // width (just the header), handing that space back to Architecture/Estimate
+  // — not just visually hiding it while still reserving a wide column.
+  function applyAiCollapsedUI() {
+    document.getElementById("aiPanelBody").classList.toggle("hidden", aiState.collapsed);
+    document.querySelector(".grid").classList.toggle("ai-collapsed", aiState.collapsed);
+    var btn = document.getElementById("aiToggleBtn");
+    btn.textContent = aiState.collapsed ? "Show" : "Hide";
+    btn.title = aiState.collapsed ? "Show AI Architect" : "Hide AI Architect to free up space";
   }
 
   function renderAiChat() {
@@ -1392,6 +1430,16 @@ cacheRead  = static − cacheWrite</div>
     state.edges = msg.proposal.edges;
     renderAll();
     notify("Applied “" + (msg.proposal.summary || "proposed architecture") + "” to the calculator.");
+  });
+  document.getElementById("aiClearBtn").addEventListener("click", function () {
+    aiState.messages = [];
+    renderAiChat();
+    saveAiState();
+  });
+  document.getElementById("aiToggleBtn").addEventListener("click", function () {
+    aiState.collapsed = !aiState.collapsed;
+    applyAiCollapsedUI();
+    saveAiState();
   });
 
   // ---------- Event wiring ----------
@@ -1823,5 +1871,6 @@ cacheRead  = static − cacheWrite</div>
   renderAll();
   renderAiControls();
   renderAiChat();
+  applyAiCollapsedUI();
 })();
 </script>
