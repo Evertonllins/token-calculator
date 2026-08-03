@@ -105,12 +105,13 @@
     background: var(--panel); color: var(--ink);
   }
 
-  .grid { display: grid; grid-template-columns: minmax(340px, 420px) 1fr; gap: 22px; align-items: start; }
+  .grid { display: grid; grid-template-columns: minmax(320px, 380px) minmax(320px, 420px) 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 1400px) { .grid { grid-template-columns: minmax(320px, 420px) 1fr; } }
   @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
 
   .panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-    box-shadow: var(--shadow); padding: 18px 18px 20px;
+    box-shadow: var(--shadow); padding: 18px 18px 20px; min-width: 0;
   }
   .panel h2 {
     font-family: var(--serif); font-size: 17px; margin: 0 0 4px; font-weight: 700;
@@ -254,6 +255,35 @@
   .add-agent-btn { width: 100%; margin-top: 4px; }
   a { color: var(--accent-ink); }
   .footnote { color: var(--ink-soft); font-size: 11.5px; margin-top: 18px; }
+
+  .ai-architect-panel { display: flex; flex-direction: column; }
+  .ai-provider-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .ai-provider-row select { flex: 0 0 130px; min-width: 0; }
+  .ai-provider-row input { flex: 1; min-width: 0; }
+  .ai-provider-row select, .ai-provider-row input, .ai-key-input {
+    font-family: var(--sans); font-size: 12.5px; color: var(--ink);
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+  }
+  .ai-key-input { width: 100%; margin-bottom: 10px; font-family: var(--mono); }
+  .ai-key-hint { font-size: 11px; color: var(--ink-soft); margin: -6px 0 10px; }
+  .ai-chat-log {
+    flex: 1; min-height: 220px; max-height: 420px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 8px;
+    border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel-2);
+    padding: 10px; margin-bottom: 10px;
+  }
+  .ai-msg { max-width: 92%; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+  .ai-msg.user { align-self: flex-end; background: var(--accent-soft); color: var(--accent-ink); }
+  .ai-msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line-soft); }
+  .ai-msg.assistant.error { border-color: var(--bad); color: var(--bad); }
+  .ai-proposal-card { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line-soft); }
+  .ai-proposal-stats { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); margin-bottom: 6px; }
+  .ai-input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .ai-input-row textarea {
+    flex: 1; min-width: 0; font-family: var(--sans); font-size: 12.5px; color: var(--ink); resize: vertical;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px;
+  }
+  .ai-status { font-size: 11.5px; color: var(--ink-soft); margin-top: 6px; min-height: 14px; }
 </style>
 
 <div class="app">
@@ -281,6 +311,28 @@
       <p class="panel-sub">Model each agent in the call graph: static prompt cost, loop iterations, per-turn output and tool-result sizes, and which other agents it calls.</p>
       <div class="agent-list" id="agentList"></div>
       <button class="btn primary add-agent-btn" id="addAgentBtn">+ Add agent</button>
+    </section>
+
+    <section class="panel ai-architect-panel">
+      <h2>AI Architect</h2>
+      <p class="panel-sub">Describe an architecture in plain language; a model drafts agents &amp; calls in the same shape as the panel on the left. Bring your own key — nothing leaves your browser except the request to the provider you pick.</p>
+      <div class="ai-provider-row">
+        <select id="aiProviderSelect">
+          <option value="openrouter">OpenRouter</option>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="google">Gemini</option>
+        </select>
+        <input type="text" id="aiModelInput" placeholder="model id" autocomplete="off">
+      </div>
+      <input type="password" id="aiKeyInput" class="ai-key-input" placeholder="API key for this provider" autocomplete="off">
+      <p class="ai-key-hint">Stored only in this browser's local storage, per provider. Some providers block direct browser requests (CORS) — OpenRouter is the most reliable.</p>
+      <div class="ai-chat-log" id="aiChatLog"></div>
+      <div class="ai-input-row">
+        <textarea id="aiChatInput" rows="2" placeholder="Describe the architecture you want, or ask for a change…"></textarea>
+        <button class="btn primary" id="aiSendBtn">Send</button>
+      </div>
+      <div class="ai-status" id="aiStatus"></div>
     </section>
 
     <section class="panel">
@@ -961,6 +1013,387 @@ cacheRead  = static − cacheWrite</div>
     document.getElementById("sessionNameInput").value = state.sessionName || "";
   }
 
+  // ---------- AI Architect ----------
+  // Bring-your-own-key chat that asks an LLM to draft/revise state.agents +
+  // state.edges from a text description. Every turn sends the FULL current
+  // architecture back as context and asks for the FULL resulting architecture
+  // in reply (no incremental patches) — simplest way to keep client and model
+  // in sync. Responses are constrained to PROPOSAL_SCHEMA via each provider's
+  // structured-output mechanism, then converted into real agent/edge records
+  // (with fresh ids) and previewed with the same cost math as the calculator
+  // before anything touches live state.
+
+  var AI_STORAGE_KEY = "token-ledger-ai-architect-v1";
+
+  function handleJsonResponse(res) {
+    return res.json().catch(function () {
+      throw new Error("HTTP " + res.status + " " + res.statusText);
+    }).then(function (data) {
+      if (!res.ok) {
+        var msg = (data && data.error && (data.error.message || data.error.type)) || (res.status + " " + res.statusText);
+        throw new Error(String(msg));
+      }
+      return data;
+    });
+  }
+
+  function buildProposalSchema() {
+    var modelKeys = Object.keys(state.prices);
+    var providerKeys = Object.keys(PROVIDERS);
+    var scenarioTriple = {
+      type: "object", additionalProperties: false,
+      properties: { best: { type: "integer" }, typical: { type: "integer" }, worst: { type: "integer" } },
+      required: ["best", "typical", "worst"]
+    };
+    return {
+      type: "object", additionalProperties: false,
+      properties: {
+        summary: { type: "string", description: "One or two sentences describing the proposed architecture, or the change just made." },
+        agents: {
+          type: "array",
+          items: {
+            type: "object", additionalProperties: false,
+            properties: {
+              name: { type: "string" },
+              provider: { type: "string", enum: providerKeys, description: "Which cost model to price this agent under." },
+              model: { type: "string", enum: modelKeys, description: "Must be one of these exact keys." },
+              systemPrompt: { type: "string", description: "Illustrative system prompt text, used only to estimate size." },
+              tools: {
+                type: "array",
+                items: {
+                  type: "object", additionalProperties: false,
+                  properties: { name: { type: "string" }, tokens: { type: "integer", description: "Rough token size of this tool's schema." } },
+                  required: ["name", "tokens"]
+                }
+              },
+              userInput: { type: "string", description: "Illustrative representative user input, used only to estimate size." },
+              outputTokens: { type: "integer", description: "Average output tokens per turn." },
+              toolResultTokens: { type: "integer", description: "Average tool-result tokens per turn." },
+              iterations: Object.assign({ description: "Self-loop turns per invocation (tool round-trips, retries)." }, scenarioTriple),
+              cacheEligible: { type: "boolean" }
+            },
+            required: ["name", "provider", "model", "systemPrompt", "tools", "userInput", "outputTokens", "toolResultTokens", "iterations", "cacheEligible"]
+          }
+        },
+        edges: {
+          type: "array",
+          items: {
+            type: "object", additionalProperties: false,
+            properties: {
+              from: { type: "string", description: "Calling agent's name." },
+              to: { type: "string", description: "Called agent's name." },
+              calls: Object.assign({ description: "How many times the caller invokes the target per its own invocation." }, scenarioTriple)
+            },
+            required: ["from", "to", "calls"]
+          }
+        }
+      },
+      required: ["summary", "agents", "edges"]
+    };
+  }
+
+  function stripKeyDeep(obj, key) {
+    if (Array.isArray(obj)) return obj.map(function (v) { return stripKeyDeep(v, key); });
+    if (obj && typeof obj === "object") {
+      var out = {};
+      Object.keys(obj).forEach(function (k) { if (k !== key) out[k] = stripKeyDeep(obj[k], key); });
+      return out;
+    }
+    return obj;
+  }
+
+  function callOpenAICompatible(url, extraHeaders, apiKey, model, systemPrompt, history) {
+    var headers = Object.assign({ "Content-Type": "application/json", "Authorization": "Bearer " + apiKey }, extraHeaders || {});
+    return fetch(url, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: "system", content: systemPrompt }].concat(history),
+        response_format: { type: "json_schema", json_schema: { name: "architecture_proposal", strict: true, schema: buildProposalSchema() } }
+      })
+    }).then(handleJsonResponse).then(function (data) {
+      var content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      if (!content) throw new Error("Empty response.");
+      return JSON.parse(content);
+    });
+  }
+
+  function callAnthropic(apiKey, model, systemPrompt, history) {
+    return fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: model,
+        max_tokens: 8192,
+        system: systemPrompt,
+        messages: history.map(function (m) { return { role: m.role === "assistant" ? "assistant" : "user", content: m.content }; }),
+        tools: [{ name: "propose_architecture", description: "Return the proposed agent architecture.", input_schema: buildProposalSchema() }],
+        tool_choice: { type: "tool", name: "propose_architecture" }
+      })
+    }).then(handleJsonResponse).then(function (data) {
+      var block = (data.content || []).filter(function (b) { return b.type === "tool_use"; })[0];
+      if (!block) throw new Error("Empty response.");
+      return block.input;
+    });
+  }
+
+  function callGemini(apiKey, model, systemPrompt, history) {
+    var url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(apiKey);
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: history.map(function (m) { return { role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }; }),
+        generationConfig: { responseMimeType: "application/json", responseSchema: stripKeyDeep(buildProposalSchema(), "additionalProperties") }
+      })
+    }).then(handleJsonResponse).then(function (data) {
+      var text = data.candidates && data.candidates[0] && data.candidates[0].content &&
+        data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+      if (!text) throw new Error("Empty response.");
+      return JSON.parse(text);
+    });
+  }
+
+  var AI_PROVIDERS = {
+    openrouter: {
+      label: "OpenRouter", defaultModel: "deepseek/deepseek-v4-flash",
+      call: callOpenAICompatible.bind(null, "https://openrouter.ai/api/v1/chat/completions", { "HTTP-Referer": location.href, "X-Title": "Token Ledger — AI Architect" })
+    },
+    openai: {
+      label: "OpenAI", defaultModel: "gpt-5.4-nano",
+      call: callOpenAICompatible.bind(null, "https://api.openai.com/v1/chat/completions", {})
+    },
+    anthropic: { label: "Anthropic", defaultModel: "claude-haiku-4-5-20251001", call: callAnthropic },
+    google: { label: "Gemini", defaultModel: "gemini-3.5-flash-lite", call: callGemini }
+  };
+
+  function defaultAiState() {
+    var keys = {}, models = {};
+    Object.keys(AI_PROVIDERS).forEach(function (p) { keys[p] = ""; models[p] = AI_PROVIDERS[p].defaultModel; });
+    return { provider: "openrouter", keys: keys, models: models, messages: [] };
+  }
+
+  function loadAiState() {
+    var base = defaultAiState();
+    try {
+      var raw = localStorage.getItem(AI_STORAGE_KEY);
+      if (!raw) return base;
+      var parsed = JSON.parse(raw);
+      return {
+        provider: AI_PROVIDERS[parsed.provider] ? parsed.provider : base.provider,
+        keys: Object.assign(base.keys, parsed.keys || {}),
+        models: Object.assign(base.models, parsed.models || {}),
+        messages: Array.isArray(parsed.messages) ? parsed.messages : []
+      };
+    } catch (e) { return base; }
+  }
+
+  function saveAiState() {
+    localStorage.setItem(AI_STORAGE_KEY, JSON.stringify(aiState));
+  }
+
+  var aiState = loadAiState();
+
+  function pickFallbackModel(provider) {
+    var keys = modelsForProvider(provider);
+    return keys[0] || Object.keys(state.prices)[0];
+  }
+
+  function validateProposal(obj) {
+    if (!obj || typeof obj !== "object") throw new Error("Response was not a JSON object.");
+    if (!Array.isArray(obj.agents) || !obj.agents.length) throw new Error("Response had no agents.");
+    obj.agents.forEach(function (a, i) {
+      if (!a || typeof a.name !== "string" || !a.name.trim()) throw new Error("Agent #" + (i + 1) + " is missing a name.");
+    });
+    if (!Array.isArray(obj.edges)) obj.edges = [];
+    return obj;
+  }
+
+  // Converts the model's name-referenced proposal into real agent/edge
+  // records with generated ids, the same shape defaultAgent()/defaultEdge()
+  // produce elsewhere — so a proposal is a first-class calculator model, not
+  // a parallel data shape.
+  function buildAgentsAndEdges(proposal) {
+    var nameToId = {};
+    var agents = proposal.agents.map(function (a) {
+      var id = uid();
+      nameToId[a.name] = id;
+      var model = state.prices[a.model] ? a.model : pickFallbackModel(PROVIDERS[a.provider] ? a.provider : "anthropic");
+      return defaultAgent({
+        id: id,
+        name: a.name,
+        provider: PROVIDERS[a.provider] ? a.provider : "anthropic",
+        model: model,
+        systemPrompt: a.systemPrompt || "",
+        systemPromptTokens: estimateTokens(a.systemPrompt),
+        tools: (a.tools || []).map(function (t) { return { text: "", name: t.name || "", tokens: Math.max(0, Number(t.tokens) || 0) }; }),
+        userInput: a.userInput || "",
+        userInputTokens: estimateTokens(a.userInput),
+        outputTokens: Math.max(0, Number(a.outputTokens) || 0),
+        toolResultTokens: Math.max(0, Number(a.toolResultTokens) || 0),
+        iterations: {
+          best: Math.max(1, Number(a.iterations && a.iterations.best) || 1),
+          typical: Math.max(1, Number(a.iterations && a.iterations.typical) || 1),
+          worst: Math.max(1, Number(a.iterations && a.iterations.worst) || 1)
+        },
+        cacheEligible: a.cacheEligible !== false
+      });
+    });
+    var edges = proposal.edges.reduce(function (acc, e) {
+      var fromId = nameToId[e.from], toId = nameToId[e.to];
+      if (!fromId || !toId) return acc;
+      acc.push(defaultEdge(fromId, toId, {
+        calls: {
+          best: Math.max(0, Number(e.calls && e.calls.best) || 0),
+          typical: Math.max(0, Number(e.calls && e.calls.typical) || 0),
+          worst: Math.max(0, Number(e.calls && e.calls.worst) || 0)
+        }
+      }));
+      return acc;
+    }, []);
+    return { agents: agents, edges: edges };
+  }
+
+  // Reuses the calculator's own cost math for the preview by swapping `state`
+  // for the proposed agents/edges (same prices/caching/traffic), computing,
+  // then restoring — one cost engine, not a second one to keep in sync.
+  function computePreviewTotals(agents, edges) {
+    var saved = state;
+    try {
+      state = Object.assign({}, state, { agents: agents, edges: edges });
+      return computeScenario("typical");
+    } finally {
+      state = saved;
+    }
+  }
+
+  function buildAiSystemPrompt() {
+    var contextAgents = state.agents.map(function (a) {
+      return { name: a.name, provider: a.provider, model: a.model, tools: a.tools.map(function (t) { return t.name || "(unnamed tool)"; }), iterations: a.iterations };
+    });
+    var contextEdges = state.edges.map(function (e) {
+      var from = state.agents.filter(function (a) { return a.id === e.from; })[0];
+      var to = state.agents.filter(function (a) { return a.id === e.to; })[0];
+      return { from: from ? from.name : e.from, to: to ? to.name : e.to, calls: e.calls };
+    });
+    return "You design multi-agent LLM system architectures for cost estimation. Given a user's description, " +
+      "propose or revise a set of agents and the calls between them, matching the required JSON schema exactly. " +
+      "\"edges\" reference agents by their \"name\" (from/to) and mean \"the calling agent invokes the target this many times per invocation\", per scenario. " +
+      "An agent with no incoming edges is an entry point, invoked once per request. systemPrompt/userInput are illustrative text used only to estimate size; " +
+      "tools[].tokens is a rough token estimate for that tool's schema. Always return the FULL resulting architecture, not just a delta. " +
+      "Current calculator state, which you are revising unless asked to start over: " + JSON.stringify({ agents: contextAgents, edges: contextEdges });
+  }
+
+  function renderAiControls() {
+    document.getElementById("aiProviderSelect").value = aiState.provider;
+    document.getElementById("aiModelInput").value = aiState.models[aiState.provider] || "";
+    document.getElementById("aiKeyInput").value = aiState.keys[aiState.provider] || "";
+  }
+
+  function renderAiChat() {
+    var log = document.getElementById("aiChatLog");
+    log.innerHTML = aiState.messages.map(function (m, i) {
+      if (m.role === "user") return '<div class="ai-msg user">' + escapeHtml(m.content) + "</div>";
+      if (m.error) return '<div class="ai-msg assistant error">' + escapeHtml(m.content) + "</div>";
+      var card = "";
+      var p = m.proposal;
+      if (p) {
+        card = '<div class="ai-proposal-card">' +
+          '<div class="ai-proposal-stats">' + p.agents.length + " agent" + (p.agents.length === 1 ? "" : "s") + " · " +
+          p.edges.length + " call" + (p.edges.length === 1 ? "" : "s") + " · " + fmtTokens(p.totals.tokens) + " tok/req · " +
+          fmtUSD(p.totals.cost) + "/req (typical)</div>" +
+          '<button class="btn small primary ai-apply-btn" data-msg="' + i + '">Apply to calculator</button>' +
+          "</div>";
+      }
+      return '<div class="ai-msg assistant">' + escapeHtml(m.content) + card + "</div>";
+    }).join("");
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function sendAiMessage() {
+    var input = document.getElementById("aiChatInput");
+    var text = input.value.trim();
+    if (!text) return;
+    var meta = AI_PROVIDERS[aiState.provider];
+    var apiKey = (aiState.keys[aiState.provider] || "").trim();
+    if (!apiKey) { notify("Add an API key for " + meta.label + " first.", true); return; }
+    var model = (aiState.models[aiState.provider] || meta.defaultModel).trim();
+
+    aiState.messages.push({ role: "user", content: text });
+    input.value = "";
+    renderAiChat();
+    saveAiState();
+
+    var sendBtn = document.getElementById("aiSendBtn");
+    sendBtn.disabled = true;
+    var status = document.getElementById("aiStatus");
+    status.style.color = "var(--ink-soft)";
+    status.textContent = "Asking " + meta.label + "…";
+
+    var history = aiState.messages.filter(function (m) { return !m.error; }).map(function (m) {
+      return { role: m.role, content: m.role === "assistant" ? (m.rawContent || m.content) : m.content };
+    });
+
+    meta.call(apiKey, model, buildAiSystemPrompt(), history)
+      .then(function (raw) {
+        var proposal = validateProposal(raw);
+        var built = buildAgentsAndEdges(proposal);
+        var totals = computePreviewTotals(built.agents, built.edges);
+        aiState.messages.push({
+          role: "assistant",
+          content: proposal.summary || "Proposed an architecture.",
+          rawContent: JSON.stringify(proposal),
+          proposal: { agents: built.agents, edges: built.edges, summary: proposal.summary, totals: totals.totals }
+        });
+        status.textContent = "";
+      })
+      .catch(function (err) {
+        aiState.messages.push({ role: "assistant", content: (err && err.message) || String(err), error: true });
+        status.style.color = "var(--bad)";
+        status.textContent = "Request failed.";
+      })
+      .then(function () {
+        sendBtn.disabled = false;
+        renderAiChat();
+        saveAiState();
+      });
+  }
+
+  document.getElementById("aiProviderSelect").addEventListener("change", function (e) {
+    aiState.provider = e.target.value;
+    renderAiControls();
+    saveAiState();
+  });
+  document.getElementById("aiModelInput").addEventListener("input", function (e) {
+    aiState.models[aiState.provider] = e.target.value;
+    saveAiState();
+  });
+  document.getElementById("aiKeyInput").addEventListener("input", function (e) {
+    aiState.keys[aiState.provider] = e.target.value;
+    saveAiState();
+  });
+  document.getElementById("aiSendBtn").addEventListener("click", sendAiMessage);
+  document.getElementById("aiChatInput").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAiMessage(); }
+  });
+  document.getElementById("aiChatLog").addEventListener("click", function (e) {
+    var btn = e.target.closest(".ai-apply-btn");
+    if (!btn) return;
+    var msg = aiState.messages[Number(btn.dataset.msg)];
+    if (!msg || !msg.proposal) return;
+    state.agents = msg.proposal.agents;
+    state.edges = msg.proposal.edges;
+    renderAll();
+    notify("Applied “" + (msg.proposal.summary || "proposed architecture") + "” to the calculator.");
+  });
+
   // ---------- Event wiring ----------
 
   document.getElementById("scenarioTabs").addEventListener("click", function (e) {
@@ -1388,5 +1821,7 @@ cacheRead  = static − cacheWrite</div>
   // ---------- Init ----------
 
   renderAll();
+  renderAiControls();
+  renderAiChat();
 })();
 </script>
