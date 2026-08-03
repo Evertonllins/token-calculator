@@ -105,15 +105,8 @@
     background: var(--panel); color: var(--ink);
   }
 
-  .grid { display: grid; grid-template-columns: minmax(320px, 380px) minmax(320px, 420px) 1fr; gap: 22px; align-items: start; }
-  .grid.ai-collapsed { grid-template-columns: minmax(320px, 380px) max-content 1fr; }
-  @media (max-width: 1400px) {
-    .grid { grid-template-columns: minmax(320px, 420px) 1fr; }
-    .grid.ai-collapsed { grid-template-columns: minmax(320px, 420px) max-content; }
-  }
-  @media (max-width: 980px) {
-    .grid, .grid.ai-collapsed { grid-template-columns: 1fr; }
-  }
+  .grid { display: grid; grid-template-columns: minmax(340px, 420px) 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
 
   .panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -262,11 +255,14 @@
   a { color: var(--accent-ink); }
   .footnote { color: var(--ink-soft); font-size: 11.5px; margin-top: 18px; }
 
-  .ai-architect-panel { display: flex; flex-direction: column; }
+  .ai-architect-panel { margin-bottom: 22px; }
   .ai-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
   .ai-panel-head h2 { margin: 0; white-space: nowrap; }
   .ai-panel-head-btns { display: flex; gap: 6px; flex-shrink: 0; }
   .ai-panel-body.hidden { display: none; }
+  .ai-body-grid { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 860px) { .ai-body-grid { grid-template-columns: 1fr; } }
+  .ai-controls-col, .ai-chat-col { min-width: 0; }
   .ai-provider-row { display: flex; gap: 8px; margin-bottom: 8px; }
   .ai-provider-row select { flex: 0 0 130px; min-width: 0; }
   .ai-provider-row input { flex: 1; min-width: 0; }
@@ -275,14 +271,14 @@
     background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
   }
   .ai-key-input { width: 100%; margin-bottom: 10px; font-family: var(--mono); }
-  .ai-key-hint { font-size: 11px; color: var(--ink-soft); margin: -6px 0 10px; }
+  .ai-key-hint { font-size: 11px; color: var(--ink-soft); margin: 0; }
   .ai-chat-log {
-    flex: 1; min-height: 220px; max-height: 420px; overflow-y: auto;
+    min-height: 160px; max-height: 320px; overflow-y: auto;
     display: flex; flex-direction: column; gap: 8px;
     border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel-2);
     padding: 10px; margin-bottom: 10px;
   }
-  .ai-msg { max-width: 92%; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+  .ai-msg { max-width: 75%; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
   .ai-msg.user { align-self: flex-end; background: var(--accent-soft); color: var(--accent-ink); }
   .ai-msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line-soft); }
   .ai-msg.assistant.error { border-color: var(--bad); color: var(--bad); }
@@ -315,42 +311,48 @@
     </div>
   </header>
 
+  <section class="panel ai-architect-panel">
+    <div class="ai-panel-head">
+      <h2>AI Architect</h2>
+      <div class="ai-panel-head-btns">
+        <button class="btn small ghost" id="aiClearBtn">Clear chat</button>
+        <button class="btn small" id="aiToggleBtn">Hide</button>
+      </div>
+    </div>
+    <div class="ai-panel-body" id="aiPanelBody">
+      <p class="panel-sub">Describe an architecture in plain language; a model drafts agents &amp; calls in the same shape as the panels below. Bring your own key — nothing leaves your browser except the request to the provider you pick. Agent design always uses token counts, never prompt text — see “Token counts only” in the guide.</p>
+      <div class="ai-body-grid">
+        <div class="ai-controls-col">
+          <div class="ai-provider-row">
+            <select id="aiProviderSelect">
+              <option value="openrouter">OpenRouter</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="google">Gemini</option>
+            </select>
+            <input type="text" id="aiModelInput" placeholder="model id" autocomplete="off">
+          </div>
+          <input type="password" id="aiKeyInput" class="ai-key-input" placeholder="API key for this provider" autocomplete="off">
+          <p class="ai-key-hint">Stored only in this browser's local storage, per provider. Some providers block direct browser requests (CORS) — OpenRouter is the most reliable.</p>
+        </div>
+        <div class="ai-chat-col">
+          <div class="ai-chat-log" id="aiChatLog"></div>
+          <div class="ai-input-row">
+            <textarea id="aiChatInput" rows="2" placeholder="Describe the architecture you want, or ask for a change…"></textarea>
+            <button class="btn primary" id="aiSendBtn">Send</button>
+          </div>
+          <div class="ai-status" id="aiStatus"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <div class="grid">
     <section class="panel">
       <h2>Architecture</h2>
       <p class="panel-sub">Model each agent in the call graph: static prompt cost, loop iterations, per-turn output and tool-result sizes, and which other agents it calls.</p>
       <div class="agent-list" id="agentList"></div>
       <button class="btn primary add-agent-btn" id="addAgentBtn">+ Add agent</button>
-    </section>
-
-    <section class="panel ai-architect-panel">
-      <div class="ai-panel-head">
-        <h2>AI Architect</h2>
-        <div class="ai-panel-head-btns">
-          <button class="btn small ghost" id="aiClearBtn">Clear chat</button>
-          <button class="btn small" id="aiToggleBtn">Hide</button>
-        </div>
-      </div>
-      <div class="ai-panel-body" id="aiPanelBody">
-        <p class="panel-sub">Describe an architecture in plain language; a model drafts agents &amp; calls in the same shape as the panel on the left. Bring your own key — nothing leaves your browser except the request to the provider you pick. Agent design always uses token counts, never prompt text — see “Token counts only” in the guide.</p>
-        <div class="ai-provider-row">
-          <select id="aiProviderSelect">
-            <option value="openrouter">OpenRouter</option>
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="google">Gemini</option>
-          </select>
-          <input type="text" id="aiModelInput" placeholder="model id" autocomplete="off">
-        </div>
-        <input type="password" id="aiKeyInput" class="ai-key-input" placeholder="API key for this provider" autocomplete="off">
-        <p class="ai-key-hint">Stored only in this browser's local storage, per provider. Some providers block direct browser requests (CORS) — OpenRouter is the most reliable.</p>
-        <div class="ai-chat-log" id="aiChatLog"></div>
-        <div class="ai-input-row">
-          <textarea id="aiChatInput" rows="2" placeholder="Describe the architecture you want, or ask for a change…"></textarea>
-          <button class="btn primary" id="aiSendBtn">Send</button>
-        </div>
-        <div class="ai-status" id="aiStatus"></div>
-      </div>
     </section>
 
     <section class="panel">
@@ -1324,12 +1326,10 @@ cacheRead  = static − cacheWrite</div>
     document.getElementById("aiKeyInput").value = aiState.keys[aiState.provider] || "";
   }
 
-  // Collapsing hides the panel body and shrinks its grid column to content
-  // width (just the header), handing that space back to Architecture/Estimate
-  // — not just visually hiding it while still reserving a wide column.
+  // Collapsing hides everything but the header row, shrinking the panel down
+  // to a thin strip and handing the vertical space back to Architecture/Estimate.
   function applyAiCollapsedUI() {
     document.getElementById("aiPanelBody").classList.toggle("hidden", aiState.collapsed);
-    document.querySelector(".grid").classList.toggle("ai-collapsed", aiState.collapsed);
     var btn = document.getElementById("aiToggleBtn");
     btn.textContent = aiState.collapsed ? "Show" : "Hide";
     btn.title = aiState.collapsed ? "Show AI Architect" : "Hide AI Architect to free up space";
